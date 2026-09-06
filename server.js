@@ -5,10 +5,6 @@ const path = require('path');
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const { db, runAsync, getAsync, allAsync, initDatabase } = require('./database');
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -344,7 +340,7 @@ app.get('/api/discord/:discordId', async (req, res) => {
   res.json(data);
 });
 
-PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 async function start() {
   await initDatabase();
