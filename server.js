@@ -344,7 +344,7 @@ app.get('/api/discord/:discordId', async (req, res) => {
   res.json(data);
 });
 
-const PORT = process.env.PORT || 3000;
+PORT = process.env.PORT || 3000;
 
 async function start() {
   await initDatabase();
