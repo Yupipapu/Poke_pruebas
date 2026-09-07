@@ -1,30 +1,13 @@
 .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
-  display: none;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px);
+  display: none; justify-content: center; align-items: center; z-index: 1000;
 }
-.modal-overlay.active {
-  display: flex;
-}
+.modal-overlay.active { display: flex; }
 .modal-window {
-  background: #18181c;
-  border: 1px solid #2d2d35;
-  border-radius: 12px;
-  width: 760px;
-  max-width: 92vw;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-  overflow: hidden;
+  background: #18181c; border: 1px solid #2d2d35; border-radius: 12px;
+  width: 760px; max-width: 92vw; max-height: 85vh; display: flex;
+  flex-direction: column; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8); overflow: hidden;
 }
 .modal-header {
   padding: 16px 20px;
@@ -120,4 +103,10 @@
   left: 0;
   width: 100%;
   height: 100%;
+}
+
+.book-tab.active-tab {
+  background-color: #1e293b !important; /* bg-slate-800 */
+  color: #6366f1 !important; /* text-indigo-500 o color activo */
+  border-bottom: 2px solid #6366f1;
 }
