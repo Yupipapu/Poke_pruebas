@@ -2,25 +2,22 @@ let trainersList = [];
 let availableMedals = [];
 let pokemonCache = [];
 let currentCardTrainer = null;
-let activeTrainerIds = new Set();
-let selectedPokemonSlots = Array(8).fill(null);
-let lastWinnerId = null;
+
+let fixedTrainerId = null;     
+let currentPanelMode = 'details'; 
 
 let groupedCharacters = [];
 const URL_TRAINER_JSON = "https://tcm-assets.pokecharms.com/export/modern-trainers/1.json";
 
 function formatName(name) {
-  return name
-    .split("-")
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join("-");
+  return name.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join("-");
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   lucide.createIcons();
   await loadMedals();
   await loadTrainers();
-  buildPokemonInputs();
+  buildInlinePokemonInputs();
   await loadConfig();
   
   await Promise.all([
@@ -42,13 +39,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 function toggleMobileMenu() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebar-overlay');
-  
   sidebar.classList.toggle('-translate-x-full');
   overlay.classList.toggle('hidden');
 }
 
 function switchTab(tab) {
-  // Ocultar menú lateral en móvil al cambiar de pestaña
   if (window.innerWidth < 768) {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -104,7 +99,8 @@ function renderTrainers() {
   );
 
   grid.innerHTML = filtered.map(t => `
-    <div onclick="openCard(${t.id})" class="bg-slate-800 border border-slate-700 hover:border-indigo-500 rounded-xl p-5 cursor-pointer flex items-center gap-4 transition shadow-md">
+    <div onmouseenter="previewCard(${t.id})" onclick="fixCard(${t.id})" 
+         class="bg-slate-800 border ${fixedTrainerId === t.id ? 'border-indigo-500 shadow-indigo-500/20' : 'border-slate-700'} hover:border-indigo-400 rounded-xl p-5 cursor-pointer flex items-center gap-4 transition shadow-md">
       <img src="${t.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png'}" class="w-16 h-16 rounded-full border-2 border-indigo-400 object-cover pointer-events-none">
       <div class="flex-1 min-w-0 pointer-events-none">
         <h3 class="font-bold text-lg truncate">${t.name}</h3>
@@ -118,7 +114,25 @@ function renderTrainers() {
   `).join("");
 }
 
-async function openCard(id) {
+async function previewCard(id) {
+  await loadTrainerDataIntoPanel(id);
+}
+
+async function fixCard(id) {
+  fixedTrainerId = id;
+  await loadTrainerDataIntoPanel(id);
+  renderTrainers(); 
+}
+
+async function onListMouseLeave() {
+  if (fixedTrainerId !== null) {
+    await loadTrainerDataIntoPanel(fixedTrainerId);
+  } else {
+    closeCardModal();
+  }
+}
+
+async function loadTrainerDataIntoPanel(id) {
   try {
     const res = await fetch(`/api/usuarios/${id}`);
     if (!res.ok) throw new Error("No se pudo obtener el entrenador.");
@@ -143,15 +157,15 @@ async function openCard(id) {
     }
 
     renderCardPokemonList();
-
-    document.getElementById("btn-edit-trainer").onclick = () => openModalForm(currentCardTrainer);
     document.getElementById("btn-delete-trainer").onclick = () => deleteTrainer(currentCardTrainer.id);
 
-    document.getElementById("card-placeholder").classList.add("hidden");
-    document.getElementById("modal-card").classList.remove("hidden");
-    closeTrainerCardModal();
+    populateInlineEditForm(currentCardTrainer);
 
-    // Adaptación móvil: Oculta la barra de búsqueda/nuevo y expande el detalle a pantalla completa
+    document.getElementById("panel-tabs-bar").classList.remove("hidden");
+    document.getElementById("card-placeholder").classList.add("hidden");
+
+    applyPanelMode();
+
     if (window.innerWidth < 1024) {
       document.getElementById("trainers-top-bar").classList.add("hidden");
       document.getElementById("trainers-list-container").classList.add("hidden");
@@ -160,13 +174,48 @@ async function openCard(id) {
     }
 
     lucide.createIcons();
-  } catch (e) { alert(`Error al abrir ficha: ${e.message}`); }
+  } catch (e) { console.error(e); }
+}
+
+function switchPanelMode(mode) {
+  currentPanelMode = mode;
+  applyPanelMode();
+}
+
+function applyPanelMode() {
+  const detailsContent = document.getElementById("panel-content-details");
+  const cardContent = document.getElementById("panel-content-card");
+  const editContent = document.getElementById("panel-content-edit");
+
+  const tabDetails = document.getElementById("tab-mode-details");
+  const tabCard = document.getElementById("tab-mode-card");
+  const tabEdit = document.getElementById("tab-mode-edit");
+
+  [tabDetails, tabCard, tabEdit].forEach(t => t.className = "book-tab px-4 py-2 rounded-t-lg text-xs font-bold bg-slate-900 text-slate-400 border-t border-x border-slate-700 transition");
+  [detailsContent, cardContent, editContent].forEach(c => c.classList.add("hidden"));
+
+  if (currentPanelMode === 'details') {
+    detailsContent.classList.remove("hidden");
+    tabDetails.className = "book-tab active-tab px-4 py-2 rounded-t-lg text-xs font-bold bg-slate-800 text-indigo-400 border-t border-x border-slate-700 transition";
+  } else if (currentPanelMode === 'card') {
+    cardContent.classList.remove("hidden");
+    tabCard.className = "book-tab active-tab px-4 py-2 rounded-t-lg text-xs font-bold bg-slate-800 text-indigo-400 border-t border-x border-slate-700 transition";
+    if (currentCardTrainer) renderTrainerCardCanvas();
+  } else if (currentPanelMode === 'edit') {
+    editContent.classList.remove("hidden");
+    tabEdit.className = "book-tab active-tab px-4 py-2 rounded-t-lg text-xs font-bold bg-slate-800 text-indigo-400 border-t border-x border-slate-700 transition";
+  }
 }
 
 function closeCardModal() { 
-  document.getElementById("modal-card").classList.add("hidden"); 
+  fixedTrainerId = null;
+  currentCardTrainer = null;
+  document.getElementById("panel-tabs-bar").classList.add("hidden");
+  document.getElementById("panel-content-details").classList.add("hidden");
+  document.getElementById("panel-content-card").classList.add("hidden");
+  document.getElementById("panel-content-edit").classList.add("hidden");
   document.getElementById("card-placeholder").classList.remove("hidden");
-  closeTrainerCardModal();
+  renderTrainers();
 }
 
 function closeCardMobile() {
@@ -190,7 +239,7 @@ function renderCardPokemonList() {
       <span class="text-xs font-bold text-slate-500">${p.position}</span>
       <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" class="w-10 h-10 pointer-events-none">
       <div class="min-w-0 flex-1 pointer-events-none">
-        <div class="text-sm font-semibold truncate">${formatName(p.name)}</div>
+        <div class="text-sm font-semibold truncate text-white">${formatName(p.name)}</div>
         <div class="text-xs text-slate-400 font-mono">#${String(p.id).padStart(3, '0')}</div>
       </div>
     </div>
@@ -217,28 +266,29 @@ async function handleDrop(e, targetIdx) {
   });
 }
 
-function buildPokemonInputs() {
-  const container = document.getElementById("pokemon-inputs-container");
+function buildInlinePokemonInputs() {
+  const container = document.getElementById("inline-pokemon-inputs-container");
+  if (!container) return;
   container.innerHTML = "";
   for (let i = 0; i < 8; i++) {
     container.innerHTML += `
-      <div class="relative bg-slate-900 border border-slate-700 p-2 rounded-lg flex items-center gap-2">
-        <span class="text-xs font-bold text-slate-500 w-4">${i + 1}</span>
-        <img id="poke-img-${i}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="w-8 h-8 opacity-0">
-        <div class="flex-1 relative">
-          <input type="text" id="poke-input-${i}" placeholder="Buscar Pokémon..." oninput="searchPokemon(${i})" class="w-full bg-transparent text-sm text-white focus:outline-none">
-          <input type="hidden" id="poke-id-${i}">
-          <div id="poke-results-${i}" class="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto hidden z-20"></div>
+      <div class="relative bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3">
+        <span class="text-xs font-bold text-slate-500">${i + 1}</span>
+        <img id="inline-poke-img-${i}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="w-10 h-10 opacity-0 pointer-events-none">
+        <div class="flex-1 relative min-w-0">
+          <input type="text" id="inline-poke-input-${i}" placeholder="Buscar Pokémon..." oninput="searchInlinePokemon(${i})" class="w-full bg-transparent text-sm font-semibold text-white focus:outline-none truncate">
+          <input type="hidden" id="inline-poke-id-${i}">
+          <div id="inline-poke-results-${i}" class="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto hidden z-20 shadow-xl"></div>
         </div>
+        <div id="inline-poke-pokedex-${i}" class="text-xs text-slate-400 font-mono">#---</div>
       </div>
     `;
   }
 }
 
-async function searchPokemon(slotIdx) {
-  const query = document.getElementById(`poke-input-${slotIdx}`).value.toLowerCase().trim();
-  const resultsDiv = document.getElementById(`poke-results-${slotIdx}`);
-
+async function searchInlinePokemon(slotIdx) {
+  const query = document.getElementById(`inline-poke-input-${slotIdx}`).value.toLowerCase().trim();
+  const resultsDiv = document.getElementById(`inline-poke-results-${slotIdx}`);
   if (query.length < 2) return resultsDiv.classList.add("hidden");
 
   if (pokemonCache.length === 0) {
@@ -250,29 +300,216 @@ async function searchPokemon(slotIdx) {
     });
   }
 
-  const selectedIds = selectedPokemonSlots.filter((id, idx) => id !== null && idx !== slotIdx);
-  const matches = pokemonCache
-    .filter(p => p.name.toLowerCase().includes(query) && !selectedIds.includes(p.id))
-    .slice(0, 15);
-
+  const matches = pokemonCache.filter(p => p.name.toLowerCase().includes(query)).slice(0, 15);
   resultsDiv.innerHTML = matches.map(p => `
-    <div onclick="selectPokemon(${slotIdx}, ${p.id}, '${p.name}')" class="p-2 hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs">
-      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" class="w-6 h-6" onerror="this.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'">
+    <div onclick="selectInlinePokemon(${slotIdx}, ${p.id}, '${p.name}')" class="p-2 hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs">
+      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" class="w-6 h-6">
       <span class="font-medium text-white">${p.name}</span>
     </div>
   `).join("");
-
   resultsDiv.classList.remove("hidden");
 }
 
-function selectPokemon(slotIdx, id, name) {
-  selectedPokemonSlots[slotIdx] = id;
+function selectInlinePokemon(slotIdx, id, name) {
+  document.getElementById(`inline-poke-id-${slotIdx}`).value = id;
+  document.getElementById(`inline-poke-input-${slotIdx}`).value = name;
+  
+  const img = document.getElementById(`inline-poke-img-${slotIdx}`);
+  img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+  img.classList.remove("opacity-0");
+
+  const pokedexDiv = document.getElementById(`inline-poke-pokedex-${slotIdx}`);
+  pokedexDiv.innerText = `#${String(id).padStart(3, '0')}`;
+
+  document.getElementById(`inline-poke-results-${slotIdx}`).classList.add("hidden");
+}
+
+function populateInlineEditForm(trainer) {
+  document.getElementById("inline-form-id").value = trainer.id;
+  document.getElementById("inline-form-name").value = trainer.name;
+  document.getElementById("inline-form-discord").value = trainer.discord_id;
+  document.getElementById("inline-form-participations").value = trainer.participations;
+  
+  document.getElementById("inline-form-fondo").value = trainer.fondo_url || '';
+  document.getElementById("inlineCurrentBgLabel").textContent = trainer.fondo_url ? "Fondo seleccionado" : "Seleccionar fondo...";
+
+  document.getElementById("inline-form-personaje").value = trainer.personaje_url || '';
+  document.getElementById("inlineCurrentTrainerLabel").textContent = trainer.personaje_url ? "Personaje seleccionado" : "Seleccionar personaje...";
+
+  const medalsContainer = document.getElementById("inline-form-medals");
+  const trainerMedalIds = trainer.medals ? trainer.medals.map(m => m.id) : [];
+
+  medalsContainer.innerHTML = availableMedals.map(m => `
+    <label class="flex items-center gap-2 bg-slate-900 border border-slate-700 p-2 rounded-lg cursor-pointer text-xs">
+      <input type="checkbox" name="inline_medals" value="${m.id_medalla}" ${trainerMedalIds.includes(m.id_medalla) ? 'checked' : ''}>
+      <span>${m.nombre}</span>
+    </label>
+  `).join("");
+
+  buildInlinePokemonInputs();
+  for (let i = 0; i < 8; i++) {
+    if (trainer.pokemon && trainer.pokemon[i]) {
+      selectInlinePokemon(i, trainer.pokemon[i].id, formatName(trainer.pokemon[i].name));
+    }
+  }
+}
+
+async function saveInlineTrainer(e) {
+  e.preventDefault();
+  const id = document.getElementById("inline-form-id").value;
+  const pokemonIds = Array.from({ length: 8 }, (_, i) => parseInt(document.getElementById(`inline-poke-id-${i}`).value, 10));
+
+  if (pokemonIds.some(isNaN)) return alert("Debes seleccionar los 8 Pokémon.");
+
+  const payload = {
+    name: document.getElementById("inline-form-name").value,
+    discord_id: document.getElementById("inline-form-discord").value,
+    participations: parseInt(document.getElementById("inline-form-participations").value, 10),
+    fondo_url: document.getElementById("inline-form-fondo").value,
+    personaje_url: document.getElementById("inline-form-personaje").value,
+    pokemon: pokemonIds,
+    medals: Array.from(document.querySelectorAll('input[name="inline_medals"]:checked')).map(cb => parseInt(cb.value, 10))
+  };
+
+  const res = await fetch(`/api/usuarios/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (res.ok) { 
+    alert("Entrenador actualizado correctamente");
+    await loadTrainers();
+    fixCard(id);
+    switchPanelMode('details');
+  } else { 
+    alert((await res.json()).error); 
+  }
+}
+
+function openModalForm() {
+  document.getElementById("form-name").value = "";
+  document.getElementById("form-discord").value = "";
+  document.getElementById("form-participations").value = 0;
+  document.getElementById("form-fondo").value = "";
+  document.getElementById("form-personaje").value = "";
+  document.getElementById("currentBgLabel").textContent = "Seleccionar fondo...";
+  document.getElementById("currentTrainerLabel").textContent = "Seleccionar personaje...";
+
+  const medalsContainer = document.getElementById("form-medals");
+  medalsContainer.innerHTML = availableMedals.map(m => `
+    <label class="flex items-center gap-2 bg-slate-900 border border-slate-700 p-2 rounded-lg cursor-pointer text-xs">
+      <input type="checkbox" name="medals" value="${m.id_medalla}">
+      <span>${m.nombre}</span>
+    </label>
+  `).join("");
+
+  const container = document.getElementById("pokemon-inputs-container");
+  container.innerHTML = "";
+  for (let i = 0; i < 8; i++) {
+    container.innerHTML += `
+      <div class="relative bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3">
+        <span class="text-xs font-bold text-slate-500">${i + 1}</span>
+        <img id="poke-img-${i}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="w-10 h-10 opacity-0 pointer-events-none">
+        <div class="flex-1 relative min-w-0">
+          <input type="text" id="poke-input-${i}" placeholder="Buscar Pokémon..." oninput="searchModalPokemon(${i})" class="w-full bg-transparent text-sm font-semibold text-white focus:outline-none truncate">
+          <input type="hidden" id="poke-id-${i}">
+          <div id="poke-results-${i}" class="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto hidden z-20 shadow-xl"></div>
+        </div>
+        <div id="poke-pokedex-${i}" class="text-xs text-slate-400 font-mono">#---</div>
+      </div>
+    `;
+  }
+
+  document.getElementById("modal-form").classList.remove("hidden");
+}
+
+function closeFormModal() { document.getElementById("modal-form").classList.add("hidden"); }
+
+async function searchModalPokemon(slotIdx) {
+  const query = document.getElementById(`poke-input-${slotIdx}`).value.toLowerCase().trim();
+  const resultsDiv = document.getElementById(`poke-results-${slotIdx}`);
+  if (query.length < 2) return resultsDiv.classList.add("hidden");
+
+  if (pokemonCache.length === 0) {
+    const res = await fetch("https://pokeapi.co/api/v2/pokemon?limit=100000");
+    const data = await res.json();
+    pokemonCache = data.results.map(p => {
+      const id = Number(p.url.split("/").filter(Boolean).pop());
+      return { id, name: formatName(p.name) };
+    });
+  }
+
+  const matches = pokemonCache.filter(p => p.name.toLowerCase().includes(query)).slice(0, 15);
+  resultsDiv.innerHTML = matches.map(p => `
+    <div onclick="selectModalPokemon(${slotIdx}, ${p.id}, '${p.name}')" class="p-2 hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs">
+      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" class="w-6 h-6">
+      <span class="font-medium text-white">${p.name}</span>
+    </div>
+  `).join("");
+  resultsDiv.classList.remove("hidden");
+}
+
+function selectModalPokemon(slotIdx, id, name) {
   document.getElementById(`poke-id-${slotIdx}`).value = id;
   document.getElementById(`poke-input-${slotIdx}`).value = name;
+  
   const img = document.getElementById(`poke-img-${slotIdx}`);
   img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
   img.classList.remove("opacity-0");
+
+  const pokedexDiv = document.getElementById(`poke-pokedex-${slotIdx}`);
+  pokedexDiv.innerText = `#${String(id).padStart(3, '0')}`;
+
   document.getElementById(`poke-results-${slotIdx}`).classList.add("hidden");
+}
+
+async function saveNewTrainer(e) {
+  e.preventDefault();
+  const pokemonIds = Array.from({ length: 8 }, (_, i) => parseInt(document.getElementById(`poke-id-${i}`).value, 10));
+  if (pokemonIds.some(isNaN)) return alert("Debes seleccionar los 8 Pokémon.");
+
+  const payload = {
+    name: document.getElementById("form-name").value,
+    discord_id: document.getElementById("form-discord").value,
+    participations: parseInt(document.getElementById("form-participations").value, 10),
+    fondo_url: document.getElementById("form-fondo").value,
+    personaje_url: document.getElementById("form-personaje").value,
+    pokemon: pokemonIds,
+    medals: Array.from(document.querySelectorAll('input[name="medals"]:checked')).map(cb => parseInt(cb.value, 10))
+  };
+
+  const res = await fetch("/api/usuarios", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (res.ok) { 
+    closeFormModal(); 
+    await loadTrainers(); 
+  } else { 
+    alert((await res.json()).error); 
+  }
+}
+
+async function deleteTrainer(id) {
+  if (!confirm("¿Eliminar entrenador?")) return;
+  await fetch(`/api/usuarios/${id}`, { method: "DELETE" });
+  closeCardModal();
+  await loadTrainers();
+}
+
+function openCardPreviewModal() {
+  const canvas = document.getElementById("cardCanvas");
+  const modalImg = document.getElementById("preview-modal-img");
+  modalImg.src = canvas.toDataURL('image/png');
+  document.getElementById("card-preview-modal").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+function closeCardPreviewModal() {
+  document.getElementById("card-preview-modal").classList.add("hidden");
 }
 
 function openModalOverlay(modalId) {
@@ -311,8 +548,14 @@ async function loadCategoryBackgrounds(categoryId) {
       card.onclick = () => {
         document.querySelectorAll('.bg-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
-        document.getElementById('form-fondo').value = bgObject.src;
-        document.getElementById('currentBgLabel').textContent = bgObject.name;
+        
+        if (document.getElementById("inline-form-id").value) {
+          document.getElementById('inline-form-fondo').value = bgObject.src;
+          document.getElementById('inlineCurrentBgLabel').textContent = bgObject.name;
+        } else {
+          document.getElementById('form-fondo').value = bgObject.src;
+          document.getElementById('currentBgLabel').textContent = bgObject.name;
+        }
         closeModalOverlay('bgModalOverlay');
       };
       grid.appendChild(card);
@@ -397,8 +640,14 @@ function showOutfitView(character) {
     card.onclick = () => {
       document.querySelectorAll('.outfit-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
-      document.getElementById('form-personaje').value = outfit.src;
-      document.getElementById('currentTrainerLabel').textContent = outfit.name;
+
+      if (document.getElementById("inline-form-id").value) {
+        document.getElementById('inline-form-personaje').value = outfit.src;
+        document.getElementById('inlineCurrentTrainerLabel').textContent = outfit.name;
+      } else {
+        document.getElementById('form-personaje').value = outfit.src;
+        document.getElementById('currentTrainerLabel').textContent = outfit.name;
+      }
       closeModalOverlay('trainerModalOverlay');
     };
     grid.appendChild(card);
@@ -410,405 +659,13 @@ function showCharacterView() {
   document.getElementById('trainerLevel2View').style.display = 'none';
 }
 
-function openModalForm(trainer = null) {
-  document.getElementById("modal-form-title").innerText = trainer ? "Editar Entrenador" : "Nuevo Entrenador";
-  document.getElementById("form-id").value = trainer ? trainer.id : "";
-  document.getElementById("form-name").value = trainer ? trainer.name : "";
-  document.getElementById("form-discord").value = trainer ? trainer.discord_id : "";
-  document.getElementById("form-participations").value = trainer ? trainer.participations : 0;
-  
-  document.getElementById("form-fondo").value = trainer ? (trainer.fondo_url || '') : '';
-  document.getElementById("currentBgLabel").textContent = trainer && trainer.fondo_url ? "Fondo personalizado seleccionado" : "Seleccionar fondo...";
-
-  document.getElementById("form-personaje").value = trainer ? (trainer.personaje_url || '') : '';
-  document.getElementById("currentTrainerLabel").textContent = trainer && trainer.personaje_url ? "Personaje seleccionado" : "Seleccionar personaje...";
-
-  const medalsContainer = document.getElementById("form-medals");
-  const trainerMedalIds = trainer && trainer.medals ? trainer.medals.map(m => m.id) : [];
-
-  medalsContainer.innerHTML = availableMedals.map(m => `
-    <label class="flex items-center gap-2 bg-slate-900 border border-slate-700 p-2 rounded-lg cursor-pointer text-xs">
-      <input type="checkbox" name="medals" value="${m.id_medalla}" ${trainerMedalIds.includes(m.id_medalla) ? 'checked' : ''}>
-      <span>${m.nombre}</span>
-    </label>
-  `).join("");
-
-  buildPokemonInputs();
-
-  selectedPokemonSlots = Array(8).fill(null);
-  for (let i = 0; i < 8; i++) {
-    if (trainer && trainer.pokemon && trainer.pokemon[i]) {
-      selectPokemon(i, trainer.pokemon[i].id, formatName(trainer.pokemon[i].name));
-    } else {
-      document.getElementById(`poke-id-${i}`).value = "";
-      document.getElementById(`poke-input-${i}`).value = "";
-      document.getElementById(`poke-img-${i}`).classList.add("opacity-0");
-    }
-  }
-  document.getElementById("modal-form").classList.remove("hidden");
-}
-
-function closeFormModal() { document.getElementById("modal-form").classList.add("hidden"); }
-
-async function saveTrainer(e) {
-  e.preventDefault();
-  const id = document.getElementById("form-id").value;
-  const pokemonIds = Array.from({ length: 8 }, (_, i) => parseInt(document.getElementById(`poke-id-${i}`).value, 10));
-
-  if (pokemonIds.some(isNaN)) return alert("Debes seleccionar los 8 Pokémon.");
-
-  const payload = {
-    name: document.getElementById("form-name").value,
-    discord_id: document.getElementById("form-discord").value,
-    participations: parseInt(document.getElementById("form-participations").value, 10),
-    fondo_url: document.getElementById("form-fondo").value,
-    personaje_url: document.getElementById("form-personaje").value,
-    pokemon: pokemonIds,
-    medals: Array.from(document.querySelectorAll('input[name="medals"]:checked')).map(cb => parseInt(cb.value, 10))
-  };
-
-  const res = await fetch(id ? `/api/usuarios/${id}` : "/api/usuarios", {
-    method: id ? "PUT" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  if (res.ok) { closeFormModal(); await loadTrainers(); }
-  else { alert((await res.json()).error); }
-}
-
-async function deleteTrainer(id) {
-  if (!confirm("¿Eliminar entrenador?")) return;
-  await fetch(`/api/usuarios/${id}`, { method: "DELETE" });
-  closeCardModal();
-  await loadTrainers();
-}
-
-function openTrainerCardModal() {
-  if (!currentCardTrainer) return;
-  document.getElementById("trainer-card-panel").classList.remove("translate-x-full");
-  renderTrainerCardCanvas();
-}
-
-function closeTrainerCardModal() {
-  document.getElementById("trainer-card-panel").classList.add("translate-x-full");
-}
-
-function openCardPreviewModal() {
-  const canvas = document.getElementById("cardCanvas");
-  const modalImg = document.getElementById("preview-modal-img");
-  modalImg.src = canvas.toDataURL('image/png');
-  document.getElementById("card-preview-modal").classList.remove("hidden");
-  lucide.createIcons();
-}
-
-function closeCardPreviewModal() {
-  document.getElementById("card-preview-modal").classList.add("hidden");
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = (err) => reject(err);
-    img.src = src;
-  });
-}
-
-async function renderTrainerCardCanvas() {
-  const canvas = document.getElementById("cardCanvas");
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // 1. Fondo
-  if (currentCardTrainer.fondo_url) {
-    try {
-      const bgImg = await loadImage(currentCardTrainer.fondo_url);
-      ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-    } catch (e) {
-      ctx.fillStyle = "#1e293b";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-  } else {
-    ctx.fillStyle = "#1e293b";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  // 2. Nombre del entrenador
-  ctx.font = 'bold 32px sans-serif';
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 5;
-  ctx.lineJoin = 'round';
-  ctx.strokeText(currentCardTrainer.name || "Trainer", 40, 45);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(currentCardTrainer.name || "Trainer", 40, 45);
-
-  // 3. Personaje
-  if (currentCardTrainer.personaje_url) {
-    try {
-      const trainerImg = await loadImage(currentCardTrainer.personaje_url);
-      const aspectRatio = trainerImg.width / trainerImg.height;
-      const targetHeight = 420;
-      const targetWidth = targetHeight * aspectRatio;
-      ctx.drawImage(trainerImg, canvas.width - targetWidth, 20, targetWidth, targetHeight);
-    } catch (e) {}
-  }
-
-  // 4. Medallas
-  if (currentCardTrainer.medals && currentCardTrainer.medals.length > 0) {
-    const boxSize = 62;
-    const medalSize = 50;
-    const startMedalX = 260;
-    const startY1 = 12;
-    const startY2 = 68;
-    const medalGapX = 60;
-
-    for (let i = 0; i < currentCardTrainer.medals.length; i++) {
-      const m = currentCardTrainer.medals[i];
-      const mx = startMedalX + (i * medalGapX);
-      const my = (i % 2 === 0) ? startY1 : startY2;
-
-      ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-      ctx.lineWidth = 1.5;
-      
-      ctx.beginPath();
-      ctx.roundRect(mx, my, boxSize, boxSize, 10);
-      ctx.fill();
-      ctx.stroke();
-
-      if (m.imagen_url) {
-        try {
-          const medalImg = await loadImage(m.imagen_url);
-          const offset = (boxSize - medalSize) / 2;
-          ctx.drawImage(medalImg, mx + offset, my + offset, medalSize, medalSize);
-        } catch (e) {}
-      }
-    }
-  }
-
-  // --- 🖼️ 5. TU IMAGEN PERSONALIZADA (AQUÍ QUEDA DETRÁS DE LOS POKÉMON) ---
-  try {
-    const customImg = await loadImage("https://i.imgur.com/vyccVOp.png");
-    ctx.drawImage(customImg, 477, 39); 
-  } catch (e) {
-    console.error("Error al cargar la imagen personalizada:", e);
-  }
-  // -------------------------------------------------------------------
-
-  // 6. Equipo Pokémon (Se dibuja DESPUÉS de tu imagen, por lo que ahora tu imagen estará detrás de ellos)
-  const pokeSize = 130;
-  const startX = 20;
-  const startY = 127;
-  const gapX = 160;
-  const gapY = 152;
-
-  if (currentCardTrainer.pokemon) {
-    for (let i = 0; i < currentCardTrainer.pokemon.length; i++) {
-      const p = currentCardTrainer.pokemon[i];
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      const x = startX + (col * gapX);
-      const y = startY + (row * gapY);
-
-      try {
-        const pokeImg = await loadImage(`https://raw.githubusercontent.com/PokeAPI/sprites/refs/heads/master/sprites/pokemon/versions/generation-ix/champions/${p.id}.png`);
-        ctx.drawImage(pokeImg, x, y, pokeSize, pokeSize);
-
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillStyle = '#000000';
-        ctx.textAlign = 'center';
-        ctx.fillText(p.name.toUpperCase(), x + (pokeSize / 2), y + pokeSize + 17);
-        ctx.textAlign = 'left';
-      } catch (e) {}
-    }
-  }
-}
-
-function downloadCard() {
-  const canvas = document.getElementById("cardCanvas");
-  try {
-    const link = document.createElement('a');
-    link.download = `TrainerCard_${currentCardTrainer ? currentCardTrainer.name : 'Pokemon'}.png`;
-    link.href = canvas.toDataURL('image/png');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (error) {
-    alert("Error exportando la tarjeta.");
-  }
-}
-
-function renderRouletteCheckboxes() {
-  const query = document.getElementById("roulette-search").value.toLowerCase();
-  const list = document.getElementById("roulette-checklist");
-
-  list.innerHTML = trainersList
-    .filter(t => t.name.toLowerCase().includes(query) || String(t.discord_id).includes(query))
-    .map(t => `
-      <label class="flex items-center gap-2 text-xs bg-slate-800 p-1.5 rounded cursor-pointer">
-        <input type="checkbox" ${activeTrainerIds.has(t.id) ? 'checked' : ''} onchange="toggleTrainerRoulette(${t.id})">
-        <span class="truncate">${t.name}</span>
-      </label>
-    `).join("");
-}
-
-function toggleTrainerRoulette(id) {
-  if (activeTrainerIds.has(id)) activeTrainerIds.delete(id);
-  else activeTrainerIds.add(id);
-  updateProbabilities();
-}
-
-let probabilities = [];
-let loadedAvatars = {};
-
-function calculateScores() {
-  const weightM = parseFloat(document.getElementById("weight-m").value);
-  const weightP = parseFloat(document.getElementById("weight-p").value);
-  document.getElementById("val-weight-m").innerText = weightM.toFixed(1);
-  document.getElementById("val-weight-p").innerText = weightP.toFixed(1);
-
-  const activeTrainers = trainersList.filter(t => activeTrainerIds.has(t.id));
-  if (activeTrainers.length === 0) return [];
-
-  const rawScores = activeTrainers.map(t => ({
-    ...t,
-    score: 1 / (1 + (t.medals * weightM) + (t.participations * weightP))
-  }));
-
-  const total = rawScores.reduce((a, b) => a + b.score, 0);
-  return rawScores.map(t => ({ ...t, probability: total > 0 ? t.score / total : 0 }));
-}
-
-function updateProbabilities() {
-  probabilities = calculateScores();
-  document.getElementById("prob-list").innerHTML = probabilities.map(p => `
-    <div class="flex justify-between text-xs p-2 bg-slate-900 rounded border border-slate-700">
-      <span class="font-medium truncate">${p.name}</span>
-      <span class="text-indigo-400 font-bold">${(p.probability * 100).toFixed(1)}%</span>
-    </div>
-  `).join("");
-  preloadAvatarsAndDraw();
-}
-
-function preloadAvatarsAndDraw() {
-  let loaded = 0;
-  if (probabilities.length === 0) return drawRoulette(0);
-
-  probabilities.forEach(p => {
-    if (!loadedAvatars[p.id]) {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = p.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png';
-      img.onload = img.onerror = () => { loaded++; if (loaded === probabilities.length) drawRoulette(0); };
-      loadedAvatars[p.id] = img;
-    } else { loaded++; }
-  });
-  if (loaded === probabilities.length) drawRoulette(0);
-}
-
-function drawRoulette(rotationAngle) {
-  const canvas = document.getElementById("roulette-canvas");
-  const ctx = canvas.getContext("2d");
-  const cx = canvas.width / 2, cy = canvas.height / 2, radius = cx - 20;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (probabilities.length === 0) return;
-
-  let startAngle = rotationAngle;
-  const colors = ['#6366f1', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#06b6d4'];
-
-  probabilities.forEach((p, idx) => {
-    const sliceAngle = p.probability * 2 * Math.PI;
-    const endAngle = startAngle + sliceAngle;
-
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, radius, startAngle, endAngle);
-    ctx.fillStyle = colors[idx % colors.length];
-    ctx.fill();
-    ctx.stroke();
-
-    if (sliceAngle > 0.15 && loadedAvatars[p.id]) {
-      const mid = startAngle + sliceAngle / 2;
-      const ax = cx + Math.cos(mid) * (radius * 0.65);
-      const ay = cy + Math.sin(mid) * (radius * 0.65);
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(ax, ay, 18, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(loadedAvatars[p.id], ax - 18, ay - 18, 36, 36);
-      ctx.restore();
-    }
-    startAngle = endAngle;
-  });
-
-  ctx.fillStyle = "#ef4444";
-  ctx.beginPath();
-  ctx.moveTo(cx + radius - 30, cy);
-  ctx.lineTo(cx + radius + 10, cy - 12);
-  ctx.lineTo(cx + radius + 10, cy + 12);
-  ctx.fill();
-}
-
-function spinRoulette() {
-  if (probabilities.length === 0) return;
-  const btn = document.getElementById("btn-spin");
-  btn.disabled = true;
-
-  const rand = Math.random();
-  let cumulative = 0, winner = probabilities[0];
-  for (const p of probabilities) {
-    cumulative += p.probability;
-    if (rand <= cumulative) { winner = p; break; }
-  }
-
-  let cumulativeAngle = 0;
-  for (const p of probabilities) {
-    if (p.id === winner.id) {
-      const targetMid = cumulativeAngle + (p.probability * 2 * Math.PI) / 2;
-      const totalRotation = 10 * Math.PI * 2 + (2 * Math.PI - targetMid);
-      let start = null;
-
-      function animate(time) {
-        if (!start) start = time;
-        const progress = Math.min((time - start) / 4000, 1);
-        const easeOut = 1 - Math.pow(1 - progress, 3);
-        drawRoulette((easeOut * totalRotation) % (Math.PI * 2));
-        if (progress < 1) requestAnimationFrame(animate);
-        else { btn.disabled = false; showWinner(winner); }
-      }
-      requestAnimationFrame(animate);
-      break;
-    }
-    cumulativeAngle += p.probability * 2 * Math.PI;
-  }
-}
-
-function showWinner(w) {
-  lastWinnerId = w.id;
-  document.getElementById("winner-avatar").src = w.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png';
-  document.getElementById("winner-name").innerText = w.name;
-  document.getElementById("winner-discord").innerText = `ID: ${w.discord_id}`;
-  document.getElementById("winner-medals").innerText = w.medals;
-  document.getElementById("winner-participations").innerText = w.participations;
-  document.getElementById("modal-winner").classList.remove("hidden");
-}
-
-async function notifyWinnerDiscord() {
-  if (!lastWinnerId) return;
-  const res = await fetch("/api/ganador/notificar", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id_usuario: lastWinnerId })
-  });
-  if (res.ok) alert("¡Mensaje Privado (DM) enviado al ganador!");
-  else alert((await res.json()).error);
+function backupDatabase() {
+  window.location.href = '/api/backup';
 }
 
 function renderMedalsTab() {
   const grid = document.getElementById("medals-grid");
+  if (!grid) return;
   grid.innerHTML = "";
 
   availableMedals.forEach(m => {
