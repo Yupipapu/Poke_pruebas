@@ -39,7 +39,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 });
 
+function toggleMobileMenu() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  
+  sidebar.classList.toggle('-translate-x-full');
+  overlay.classList.toggle('hidden');
+}
+
 function switchTab(tab) {
+  // Ocultar menú lateral en móvil al cambiar de pestaña
+  if (window.innerWidth < 768) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!sidebar.classList.contains('-translate-x-full')) {
+      sidebar.classList.add('-translate-x-full');
+      overlay.classList.add('hidden');
+    }
+  }
+
   ['trainers', 'roulette', 'medals', 'config'].forEach(t => {
     const section = document.getElementById(`tab-${t}`);
     const btn = document.getElementById(`btn-nav-${t}`);
@@ -132,6 +150,15 @@ async function openCard(id) {
     document.getElementById("card-placeholder").classList.add("hidden");
     document.getElementById("modal-card").classList.remove("hidden");
     closeTrainerCardModal();
+
+    // Adaptación móvil: Oculta la barra de búsqueda/nuevo y expande el detalle a pantalla completa
+    if (window.innerWidth < 1024) {
+      document.getElementById("trainers-top-bar").classList.add("hidden");
+      document.getElementById("trainers-list-container").classList.add("hidden");
+      document.getElementById("trainers-detail-container").classList.remove("hidden");
+      document.getElementById("trainers-detail-container").classList.add("flex", "col-span-12");
+    }
+
     lucide.createIcons();
   } catch (e) { alert(`Error al abrir ficha: ${e.message}`); }
 }
@@ -140,6 +167,14 @@ function closeCardModal() {
   document.getElementById("modal-card").classList.add("hidden"); 
   document.getElementById("card-placeholder").classList.remove("hidden");
   closeTrainerCardModal();
+}
+
+function closeCardMobile() {
+  document.getElementById("trainers-top-bar").classList.remove("hidden");
+  document.getElementById("trainers-list-container").classList.remove("hidden");
+  document.getElementById("trainers-detail-container").classList.remove("col-span-12", "flex");
+  document.getElementById("trainers-detail-container").classList.add("hidden");
+  closeCardModal();
 }
 
 function renderCardPokemonList() {
@@ -701,9 +736,9 @@ function drawRoulette(rotationAngle) {
 
   ctx.fillStyle = "#ef4444";
   ctx.beginPath();
-  ctx.moveTo(cx + radius + 15, cy);
-  ctx.lineTo(cx + radius - 10, cy - 15);
-  ctx.lineTo(cx + radius - 10, cy + 15);
+  ctx.moveTo(cx + radius - 30, cy);
+  ctx.lineTo(cx + radius + 10, cy - 12);
+  ctx.lineTo(cx + radius + 10, cy + 12);
   ctx.fill();
 }
 
@@ -768,16 +803,38 @@ function renderMedalsTab() {
 
   availableMedals.forEach(m => {
     const card = document.createElement("div");
-    card.className = "bg-slate-800 border border-slate-700 p-4 rounded-xl space-y-2 flex flex-col justify-between";
-    card.innerHTML = `
-      <div class="flex items-center gap-3">
-        ${m.imagen_url ? `<img src="${m.imagen_url}" class="w-10 h-10 object-contain">` : ''}
-        <div>
-          <h3 class="font-bold">${m.nombre}</h3>
-          <span class="text-xs text-amber-400 font-semibold">${m.tipo}</span>
+    card.className = "bg-slate-800 border border-slate-700 p-4 rounded-xl space-y-3 flex flex-col justify-between";
+    
+    let usersHtml = '<span class="text-xs text-slate-500">Nadie tiene esta medalla aún</span>';
+    if (m.users && m.users.length > 0) {
+      usersHtml = `
+        <div class="flex flex-wrap gap-1.5 items-center">
+          ${m.users.map(u => `
+            <img src="${u.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png'}" 
+                 title="${u.name}" 
+                 class="w-7 h-7 rounded-full border border-indigo-400 object-cover cursor-pointer hover:scale-110 transition">
+          `).join("")}
         </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="space-y-2">
+        <div class="flex items-center gap-3">
+          ${m.imagen_url ? `<img src="${m.imagen_url}" class="w-10 h-10 object-contain">` : ''}
+          <div>
+            <h3 class="font-bold text-white">${m.nombre}</h3>
+            <span class="text-xs text-amber-400 font-semibold">${m.tipo}</span>
+          </div>
+        </div>
+        <p class="text-xs text-slate-400">${m.descripcion || ''}</p>
       </div>
-      <p class="text-xs text-slate-400 flex-1">${m.descripcion || ''}</p>
+
+      <div class="space-y-2 pt-2 border-t border-slate-700/50">
+        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Entrenadores con esta medalla:</div>
+        ${usersHtml}
+      </div>
+
       <div class="flex justify-end gap-2 pt-2 border-t border-slate-700/50">
         <button class="btn-edit-m text-xs text-indigo-400 hover:underline">Editar</button>
         <button class="btn-del-m text-xs text-rose-400 hover:underline">Eliminar</button>
