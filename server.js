@@ -71,11 +71,24 @@ async function getDiscordUserData(discordId) {
   }
 }
 
-// ENDPOINTS MEDALLAS
+// ENDPOINTS MEDALLAS (Actualizado para incluir los usuarios que poseen cada medalla)
 app.get('/api/medallas', async (req, res) => {
   try {
     const medallas = await allAsync("SELECT * FROM MEDALLA") || [];
-    res.json(medallas);
+    const medallasConUsuarios = [];
+
+    for (const m of medallas) {
+      const users = await allAsync(`
+        SELECT u.id_usuario as id, u.nombre as name, u.avatar_url, u.discord_id 
+        FROM USUARIO u
+        JOIN USUARIO_MEDALLA um ON u.id_usuario = um.id_usuario
+        WHERE um.id_medalla = ?
+      `, [m.id_medalla]) || [];
+      
+      medallasConUsuarios.push({ ...m, users });
+    }
+
+    res.json(medallasConUsuarios);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
