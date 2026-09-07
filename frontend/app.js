@@ -521,6 +521,7 @@ async function renderTrainerCardCanvas() {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // 1. Fondo
   if (currentCardTrainer.fondo_url) {
     try {
       const bgImg = await loadImage(currentCardTrainer.fondo_url);
@@ -534,6 +535,7 @@ async function renderTrainerCardCanvas() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
+  // 2. Nombre del entrenador
   ctx.font = 'bold 32px sans-serif';
   ctx.strokeStyle = '#000000';
   ctx.lineWidth = 5;
@@ -542,6 +544,7 @@ async function renderTrainerCardCanvas() {
   ctx.fillStyle = '#ffffff';
   ctx.fillText(currentCardTrainer.name || "Trainer", 40, 45);
 
+  // 3. Personaje
   if (currentCardTrainer.personaje_url) {
     try {
       const trainerImg = await loadImage(currentCardTrainer.personaje_url);
@@ -552,22 +555,20 @@ async function renderTrainerCardCanvas() {
     } catch (e) {}
   }
 
-  // 🏅 DIBUJAR MEDALLAS EN ZIGZAG CON CONTENEDORES MÁS GRANDES
+  // 4. Medallas
   if (currentCardTrainer.medals && currentCardTrainer.medals.length > 0) {
-    const boxSize = 62;   // Tamaño del contenedor incrementado
-    const medalSize = 50; // Tamaño de la medalla incrementado
+    const boxSize = 62;
+    const medalSize = 50;
     const startMedalX = 260;
-    const startY1 = 12;   // Fila superior del zigzag
-    const startY2 = 68;   // Fila inferior del zigzag
-    const medalGapX = 60; // Separación horizontal entre cada caja
+    const startY1 = 12;
+    const startY2 = 68;
+    const medalGapX = 60;
 
     for (let i = 0; i < currentCardTrainer.medals.length; i++) {
       const m = currentCardTrainer.medals[i];
       const mx = startMedalX + (i * medalGapX);
-      // Alternar fila según la posición (par arriba, impar abajo para el zigzag)
       const my = (i % 2 === 0) ? startY1 : startY2;
 
-      // 1. Dibujar el cuadrado negro transparente de fondo
       ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
       ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
       ctx.lineWidth = 1.5;
@@ -577,7 +578,6 @@ async function renderTrainerCardCanvas() {
       ctx.fill();
       ctx.stroke();
 
-      // 2. Dibujar la imagen de la medalla centrada dentro del cuadrado
       if (m.imagen_url) {
         try {
           const medalImg = await loadImage(m.imagen_url);
@@ -588,6 +588,16 @@ async function renderTrainerCardCanvas() {
     }
   }
 
+  // --- 🖼️ 5. TU IMAGEN PERSONALIZADA (AQUÍ QUEDA DETRÁS DE LOS POKÉMON) ---
+  try {
+    const customImg = await loadImage("https://i.imgur.com/vyccVOp.png");
+    ctx.drawImage(customImg, 477, 39); 
+  } catch (e) {
+    console.error("Error al cargar la imagen personalizada:", e);
+  }
+  // -------------------------------------------------------------------
+
+  // 6. Equipo Pokémon (Se dibuja DESPUÉS de tu imagen, por lo que ahora tu imagen estará detrás de ellos)
   const pokeSize = 130;
   const startX = 20;
   const startY = 127;
