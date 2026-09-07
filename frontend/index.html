@@ -59,11 +59,12 @@
   <div id="sidebar-overlay" onclick="toggleMobileMenu()" class="fixed inset-0 bg-black/70 z-40 hidden md:hidden"></div>
 
   <!-- Content -->
-  <main class="flex-1 overflow-y-auto p-4 md:p-8 relative">
+  <main class="flex-1 overflow-y-auto p-4 md:p-6 relative flex flex-col">
 
     <!-- TAB: ENTRENADORES -->
-    <section id="tab-trainers" class="space-y-6 h-full flex flex-col">
-      <div id="trainers-top-bar" class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+    <section id="tab-trainers" class="space-y-4 h-full flex flex-col">
+      <div id="trainers-top-bar"
+        class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 shrink-0">
         <div class="relative flex-1 max-w-md">
           <i data-lucide="search" class="absolute left-3 top-3 text-slate-400 w-5 h-5"></i>
           <input type="text" id="search-input" oninput="renderTrainers()"
@@ -76,112 +77,184 @@
         </button>
       </div>
 
-      <!-- Layout de 2 Columnas / Vista Alternada en Móvil -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 relative">
+      <!-- Layout de 2 Columnas -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 relative items-start">
 
         <!-- Columna de la Lista de Entrenadores -->
-        <div id="trainers-list-container" class="lg:col-span-4 overflow-y-auto space-y-4 pr-1 flex flex-col h-full">
+        <div id="trainers-list-container" onmouseleave="onListMouseLeave()"
+          class="lg:col-span-4 overflow-y-auto space-y-3 pr-1 flex flex-col h-full">
           <div id="trainers-grid" class="space-y-3"></div>
         </div>
 
-        <!-- Columna de Detalles / Tarjeta del Entrenador -->
-        <div id="trainers-detail-container"
-          class="hidden lg:flex lg:col-span-8 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex-col h-full relative min-h-[500px]">
+        <!-- Columna de Detalles / Contenedor Principal Unificado -->
+        <div class="lg:col-span-8 flex flex-col h-full relative">
 
-          <!-- Botón de Volver (Solo visible en móviles cuando se abre el detalle) -->
-          <div id="btn-back-mobile"
-            class="lg:hidden p-3 bg-slate-900 border-b border-slate-700 flex items-center gap-2 text-indigo-400 cursor-pointer font-semibold text-sm"
-            onclick="closeCardMobile()">
-            <i data-lucide="arrow-left" class="w-5 h-5"></i> <span>Volver a la lista</span>
+          <!-- Pestañas Superiores (Alineadas a la izquierda y con mayor área vertical) -->
+          <div id="panel-tabs-bar" class="hidden bg-transparent px-0 flex gap-2 shrink-0 z-10 -mb-[1px]">
+            <button onclick="switchPanelMode('details')" id="tab-mode-details"
+              class="book-tab px-5 py-3 rounded-t-lg text-xs font-bold bg-slate-800 text-slate-300 border-t border-x border-slate-700 transition">
+              Detalles
+            </button>
+            <button onclick="switchPanelMode('card')" id="tab-mode-card"
+              class="book-tab px-5 py-3 rounded-t-lg text-xs font-bold bg-slate-900 text-slate-400 border-t border-x border-slate-700 transition">
+              Trainer Card
+            </button>
+            <button onclick="switchPanelMode('edit')" id="tab-mode-edit"
+              class="book-tab px-5 py-3 rounded-t-lg text-xs font-bold bg-slate-900 text-slate-400 border-t border-x border-slate-700 transition">
+              Edición
+            </button>
           </div>
 
-          <div id="card-placeholder"
-            class="flex-1 flex flex-col items-center justify-center p-8 text-slate-500 space-y-3">
-            <i data-lucide="user-check" class="w-16 h-16 stroke-1"></i>
-            <p class="text-sm font-medium text-center">Selecciona un entrenador de la lista para ver sus detalles</p>
-          </div>
+          <div id="trainers-detail-container"
+            class="hidden lg:flex bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex-col h-full relative min-h-[500px]">
 
-          <div id="modal-card" class="hidden flex-1 flex flex-col h-full overflow-hidden">
-            <div
-              class="p-4 md:p-6 border-b border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-850">
-              <div class="flex items-center gap-4">
-                <img id="card-avatar" src=""
-                  class="w-14 h-14 md:w-16 md:h-16 rounded-full border-2 border-indigo-500 object-cover shrink-0">
+            <!-- Botón de Volver (Móvil) -->
+            <div id="btn-back-mobile"
+              class="lg:hidden p-3 bg-slate-900 border-b border-slate-700 flex items-center gap-2 text-indigo-400 cursor-pointer font-semibold text-sm"
+              onclick="closeCardMobile()">
+              <i data-lucide="arrow-left" class="w-5 h-5"></i> <span>Volver a la lista</span>
+            </div>
+
+            <!-- Placeholder cuando no hay selección -->
+            <div id="card-placeholder"
+              class="flex-1 flex flex-col items-center justify-center p-8 text-slate-500 space-y-3">
+              <i data-lucide="user-check" class="w-16 h-16 stroke-1"></i>
+              <p class="text-sm font-medium text-center">Selecciona o pasa el cursor sobre un entrenador de la lista</p>
+            </div>
+
+            <!-- CONTENIDO VISTA: DETALLES -->
+            <div id="panel-content-details" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+              <div
+                class="p-4 md:p-6 border-b border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-850">
+                <div class="flex items-center gap-4">
+                  <img id="card-avatar" src=""
+                    class="w-14 h-14 md:w-16 md:h-16 rounded-full border-2 border-indigo-500 object-cover shrink-0">
+                  <div>
+                    <h2 id="card-name" class="text-xl md:text-2xl font-bold truncate"></h2>
+                    <p id="card-discord" class="text-xs md:text-sm text-slate-400 truncate"></p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-4 md:p-6 overflow-y-auto space-y-6 flex-1">
+                <div class="flex gap-4 text-center">
+                  <div class="flex-1 bg-slate-900 p-3 rounded-lg">
+                    <div class="text-xs text-slate-400">Participaciones</div>
+                    <div id="card-participations" class="text-xl font-bold text-indigo-400"></div>
+                  </div>
+                  <div class="flex-1 bg-slate-900 p-3 rounded-lg">
+                    <div class="text-xs text-slate-400">Medallas</div>
+                    <div id="card-medals-count" class="text-xl font-bold text-amber-400"></div>
+                  </div>
+                </div>
+
                 <div>
-                  <h2 id="card-name" class="text-xl md:text-2xl font-bold truncate"></h2>
-                  <p id="card-discord" class="text-xs md:text-sm text-slate-400 truncate"></p>
+                  <h3 class="text-sm font-bold tracking-wider text-slate-400 uppercase mb-3">Medallas Obtenidas</h3>
+                  <div id="card-medals-list" class="flex flex-wrap gap-2"></div>
+                </div>
+
+                <div>
+                  <h3 class="text-sm font-bold tracking-wider text-slate-400 uppercase mb-3">Equipo Pokémon</h3>
+                  <div id="card-pokemon-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
                 </div>
               </div>
 
-              <button onclick="openTrainerCardModal()"
-                class="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold px-4 py-2 rounded-lg shadow-md transition transform hover:scale-105">
-                <i data-lucide="id-card" class="w-5 h-5"></i> Trainer Card
-              </button>
+              <div class="p-4 border-t border-slate-700 bg-slate-850 flex justify-end gap-3">
+                <button onclick="switchPanelMode('edit')"
+                  class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium">Editar</button>
+                <button id="btn-delete-trainer"
+                  class="px-4 py-2 bg-rose-600 hover:bg-rose-500 rounded-lg text-sm font-medium">Eliminar</button>
+              </div>
             </div>
 
-            <div class="p-4 md:p-6 overflow-y-auto space-y-6 flex-1">
-              <div class="flex gap-4 text-center">
-                <div class="flex-1 bg-slate-900 p-3 rounded-lg">
-                  <div class="text-xs text-slate-400">Participaciones</div>
-                  <div id="card-participations" class="text-xl font-bold text-indigo-400"></div>
+            <!-- CONTENIDO VISTA: TRAINER CARD -->
+            <div id="panel-content-card" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+              <div class="p-4 md:p-6 overflow-y-auto flex-1 flex flex-col items-center justify-center space-y-4">
+                <div class="relative group cursor-pointer w-full overflow-x-auto" onclick="openCardPreviewModal()">
+                  <canvas id="cardCanvas" width="878" height="439"
+                    class="w-full rounded-xl border border-slate-700 shadow-2xl bg-black transition transform group-hover:scale-[1.01]"></canvas>
+                  <div
+                    class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center gap-2 text-white font-semibold text-sm">
+                    <i data-lucide="maximize-2" class="w-5 h-5"></i> Clic para ampliar
+                  </div>
                 </div>
-                <div class="flex-1 bg-slate-900 p-3 rounded-lg">
-                  <div class="text-xs text-slate-400">Medallas</div>
-                  <div id="card-medals-count" class="text-xl font-bold text-amber-400"></div>
-                </div>
+                <p class="text-xs text-slate-400 text-center">Haz clic sobre la tarjeta para verla en pantalla completa.
+                </p>
               </div>
 
-              <div>
-                <h3 class="text-sm font-bold tracking-wider text-slate-400 uppercase mb-3">Medallas Obtenidas</h3>
-                <div id="card-medals-list" class="flex flex-wrap gap-2"></div>
-              </div>
-
-              <div>
-                <h3 class="text-sm font-bold tracking-wider text-slate-400 uppercase mb-3">Equipo Pokémon</h3>
-                <div id="card-pokemon-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+              <div class="p-4 border-t border-slate-800 bg-slate-950 flex justify-end">
+                <button onclick="downloadCard()"
+                  class="w-full bg-rose-600 hover:bg-rose-500 font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition text-sm">
+                  <i data-lucide="download" class="w-5 h-5"></i> Descargar Tarjeta PNG
+                </button>
               </div>
             </div>
 
-            <div class="p-4 border-t border-slate-700 bg-slate-850 flex justify-end gap-3">
-              <button id="btn-edit-trainer"
-                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium">Editar</button>
-              <button id="btn-delete-trainer"
-                class="px-4 py-2 bg-rose-600 hover:bg-rose-500 rounded-lg text-sm font-medium">Eliminar</button>
+            <!-- CONTENIDO VISTA: EDICIÓN INCRUSTADA -->
+            <div id="panel-content-edit" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+              <div class="p-4 md:p-6 overflow-y-auto flex-1 space-y-6">
+                <form id="trainer-inline-form" onsubmit="saveInlineTrainer(event)" class="space-y-6">
+                  <input type="hidden" id="inline-form-id">
+                  <input type="hidden" id="inline-form-fondo">
+                  <input type="hidden" id="inline-form-personaje">
+
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium mb-1">Nombre Entrenador</label>
+                      <input type="text" id="inline-form-name" required
+                        class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white">
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium mb-1">Discord ID</label>
+                      <input type="text" id="inline-form-discord" required
+                        class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white">
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium mb-1">Participaciones</label>
+                      <input type="number" id="inline-form-participations" min="0" value="0" required
+                        class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white">
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium mb-1">Fondo de Tarjeta:</label>
+                      <button type="button" onclick="openModalOverlay('bgModalOverlay')"
+                        class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-left flex justify-between items-center text-sm">
+                        <span id="inlineCurrentBgLabel" class="truncate">Seleccionar fondo...</span>
+                        <span>▾</span>
+                      </button>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium mb-1">Entrenador (Personaje):</label>
+                      <button type="button" onclick="openModalOverlay('trainerModalOverlay')"
+                        class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-left flex justify-between items-center text-sm">
+                        <span id="inlineCurrentTrainerLabel" class="truncate">Seleccionar personaje...</span>
+                        <span>▾</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium mb-2">Medallas</label>
+                    <div id="inline-form-medals" class="grid grid-cols-2 md:grid-cols-4 gap-2"></div>
+                  </div>
+
+                  <div>
+                    <h3 class="text-sm font-bold tracking-wider text-slate-400 uppercase mb-3">Equipo Pokémon</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="inline-pokemon-inputs-container"></div>
+                  </div>
+
+                  <div class="flex justify-end gap-3 pt-4 border-t border-slate-700">
+                    <button type="submit"
+                      class="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium text-sm">Guardar
+                      Cambios</button>
+                  </div>
+                </form>
+              </div>
             </div>
+
           </div>
-
-          <!-- PANEL GENERADOR TRAINER CARD -->
-          <div id="trainer-card-panel"
-            class="absolute inset-y-0 right-0 w-full md:w-[700px] bg-slate-900 border-l border-slate-700 shadow-2xl transform translate-x-full transition-transform duration-300 z-30 flex flex-col">
-            <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-              <h3 class="font-bold flex items-center gap-2 text-amber-400 text-sm md:text-base">
-                <i data-lucide="bookmark" class="w-5 h-5"></i> Generador de Tarjeta
-              </h3>
-              <button onclick="closeTrainerCardModal()" class="text-slate-400 hover:text-white p-1">
-                <i data-lucide="x" class="w-6 h-6"></i>
-              </button>
-            </div>
-
-            <div class="p-4 md:p-6 overflow-y-auto flex-1 flex flex-col items-center justify-center space-y-4">
-              <div class="relative group cursor-pointer w-full overflow-x-auto" onclick="openCardPreviewModal()">
-                <canvas id="cardCanvas" width="878" height="439"
-                  class="w-full rounded-xl border border-slate-700 shadow-2xl bg-black transition transform group-hover:scale-[1.01]"></canvas>
-                <div
-                  class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center gap-2 text-white font-semibold text-sm">
-                  <i data-lucide="maximize-2" class="w-5 h-5"></i> Clic para ampliar
-                </div>
-              </div>
-              <p class="text-xs text-slate-400 text-center">Haz clic sobre la tarjeta para verla en pantalla completa.</p>
-            </div>
-
-            <div class="p-4 border-t border-slate-800 bg-slate-950 flex justify-end">
-              <button onclick="downloadCard()"
-                class="w-full bg-rose-600 hover:bg-rose-500 font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition text-sm">
-                <i data-lucide="download" class="w-5 h-5"></i> Descargar Tarjeta PNG
-              </button>
-            </div>
-          </div>
-
         </div>
 
       </div>
@@ -276,12 +349,23 @@
         </div>
         <button onclick="saveConfig()"
           class="w-full bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-lg font-bold">Guardar Configuración</button>
+
+        <!-- SECCIÓN DE RESPALDO DE BASE DE DATOS -->
+        <div class="border-t border-slate-700 pt-4 mt-4">
+          <h3 class="text-sm font-semibold mb-2 text-indigo-400">Respaldo de Datos</h3>
+          <p class="text-xs text-slate-400 mb-3">Descarga una copia de seguridad de tu base de datos SQLite para evitar
+            perder tus entrenadores o medallas.</p>
+          <button onclick="backupDatabase()"
+            class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-lg flex items-center gap-2 transition text-sm">
+            <i data-lucide="download-cloud" class="w-4 h-4"></i> Descargar Respaldo (.db)
+          </button>
+        </div>
       </div>
     </section>
 
   </main>
 
-  <!-- MODAL CREACIÓN / EDICIÓN ENTRENADOR -->
+  <!-- MODAL CREACIÓN NUEVO ENTRENADOR -->
   <div id="modal-form"
     class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
     <div
@@ -292,8 +376,7 @@
             class="w-6 h-6"></i></button>
       </div>
 
-      <form id="trainer-form" onsubmit="saveTrainer(event)" class="p-4 md:p-6 overflow-y-auto space-y-6">
-        <input type="hidden" id="form-id">
+      <form id="trainer-form" onsubmit="saveNewTrainer(event)" class="p-4 md:p-6 overflow-y-auto space-y-6">
         <input type="hidden" id="form-fondo">
         <input type="hidden" id="form-personaje">
 
@@ -510,6 +593,8 @@
     </div>
   </div>
 
+  <script src="trainer-card.js"></script>
+  <script src="roulette.js"></script>
   <script src="app.js"></script>
 </body>
 
