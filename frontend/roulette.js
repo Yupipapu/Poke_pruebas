@@ -129,7 +129,7 @@ function drawRoulette(rotationAngle) {
       const ax = cx + Math.cos(mid) * (radius * 0.65);
       const ay = cy + Math.sin(mid) * (radius * 0.65);
       
-      const avatarSize = 36; // <--- Modifica este valor para cambiar el tamaño del icono con varios participantes
+      const avatarSize = 67; // <--- Modifica este valor para cambiar el tamaño del icono con varios participantes
       const rSize = avatarSize / 2;
 
       ctx.save();
