@@ -36,7 +36,8 @@ let currentPanelMode = 'details';
 
 let groupedCharacters = [];
 let activeLoadingTrainerId = null;
-let catalogsLoaded = false; // Bandera para saber si los catálogos ya terminaron de descargar
+let catalogsLoaded = false;
+let activeFormContext = 'create'; // 'create' o 'edit'
 const URL_TRAINER_JSON = "https://tcm-assets.pokecharms.com/export/modern-trainers/1.json";
 
 function formatName(name) {
@@ -46,8 +47,7 @@ function formatName(name) {
 function getBackgroundName(url) {
   if (!url) return "Seleccionar fondo...";
   if (backgroundNamesCache[url]) return backgroundNamesCache[url];
-
-  // Si es un hash de archivo técnico de Pokécharms y no se encontró en caché:
+  
   if (url.includes('pokecharms.com') || url.length > 40) {
     return "Fondo personalizado / Externo";
   }
@@ -73,7 +73,6 @@ function getTrainerOutfitName(url) {
     }
   }
 
-  // Si es un sprite externo o no encontrado en el catálogo de la API 1.json:
   if (url.includes('pokecharms.com') || url.length > 40) {
     return "Entrenador personalizado / Otro catálogo";
   }
@@ -82,21 +81,54 @@ function getTrainerOutfitName(url) {
     const filename = url.split('/').pop().split('?')[0];
     return filename ? decodeURIComponent(filename) : "Seleccionar personaje...";
   } catch (e) {
-    return "Seleccionar personajeப்பொரு..."
+    return "Seleccionar personaje...";
+  }
+}
+
+// ==========================================
+// SELECCIÓN GLOBAL Y UNIFICADA
+// ==========================================
+function openBgModal(context) {
+  activeFormContext = context;
+  openModalOverlay('bgModalOverlay');
+}
+
+function openTrainerModal(context) {
+  activeFormContext = context;
+  openModalOverlay('trainerModalOverlay');
+}
+
+function setBackgroundSelection(src, name) {
+  backgroundNamesCache[src] = name;
+  if (activeFormContext === 'edit') {
+    document.getElementById('inline-form-fondo').value = src;
+    document.getElementById('inlineCurrentBgLabel').textContent = name;
+  } else {
+    document.getElementById('form-fondo').value = src;
+    document.getElementById('currentBgLabel').textContent = name;
+  }
+}
+
+function setTrainerSelection(src, displayName) {
+  trainerOutfitNamesCache[src] = displayName;
+  if (activeFormContext === 'edit') {
+    document.getElementById('inline-form-personaje').value = src;
+    document.getElementById('inlineCurrentTrainerLabel').textContent = displayName;
+  } else {
+    document.getElementById('form-personaje').value = src;
+    document.getElementById('currentTrainerLabel').textContent = displayName;
   }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   lucide.createIcons();
 
-  // 1. Cargamos primero los catálogos globales y los fondos para evitar nombres técnicos vacíos
   await Promise.all([
     preloadAllBackgrounds(),
     loadTrainersCatalog()
   ]);
   catalogsLoaded = true;
 
-  // 2. Cargamos datos de la base de datos y medallas
   await loadMedals();
   await loadTrainers();
   buildInlinePokemonInputs();
@@ -186,14 +218,23 @@ async function loadTrainers() {
 function renderTrainers() {
   const grid = document.getElementById("trainers-grid");
   const searchInput = document.getElementById("search-input");
-  const query = searchInput ? searchInput.value.toLowerCase() : "";
+  const medalFilterInput = document.getElementById("medal-filter-input");
 
-  const filtered = trainersList.filter(t =>
-    t.name.toLowerCase().includes(query) || String(t.discord_id).includes(query)
-  );
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : "";
+  const medalQuery = medalFilterInput ? medalFilterInput.value.trim() : "";
+
+  const filtered = trainersList.filter(t => {
+    const matchesText = t.name.toLowerCase().includes(query) || String(t.discord_id).includes(query);
+    const trainerMedals = t.medals || 0;
+    let matchesMedals = true;
+    if (medalQuery !== "") {
+      matchesMedals = trainerMedals === parseInt(medalQuery, 10);
+    }
+    return matchesText && matchesMedals;
+  });
 
   grid.innerHTML = filtered.map(t => `
-    <div onmouseenter="previewCard(${t.id})" onclick="fixCard(${t.id})" 
+    <div onclick="selectTrainer(${t.id})" 
          class="bg-slate-800 border ${fixedTrainerId === t.id ? 'border-indigo-500 shadow-indigo-500/20' : 'border-slate-700'} hover:border-indigo-400 rounded-xl p-5 cursor-pointer flex items-center gap-4 transition shadow-md">
       <img src="${t.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png'}" class="w-16 h-16 rounded-full border-2 border-indigo-400 object-cover pointer-events-none">
       <div class="flex-1 min-w-0 pointer-events-none">
@@ -208,45 +249,10 @@ function renderTrainers() {
   `).join("");
 }
 
-async function previewCard(id) {
-  await loadTrainerDataIntoPanel(id);
-}
-
-async function fixCard(id) {
+async function selectTrainer(id) {
   fixedTrainerId = id;
   await loadTrainerDataIntoPanel(id);
   renderTrainers();
-}
-
-let leaveTimeout = null;
-
-function onListMouseEnter() {
-  // Si el mouse vuelve a entrar rápidamente, cancelamos cualquier intento de cierre pendiente
-  if (leaveTimeout) {
-    clearTimeout(leaveTimeout);
-    leaveTimeout = null;
-  }
-}
-
-async function onListMouseLeave(event) {
-  // Si el cursor se mueve directamente hacia el panel de detalles, no revertimos la vista
-  if (event && event.relatedTarget) {
-    const detailContainer = document.getElementById("trainers-detail-container");
-    if (detailContainer && detailContainer.contains(event.relatedTarget)) {
-      return;
-    }
-  }
-
-  // Margen de tiempo (150ms) para evitar que saltos rápidos de cursor en los bordes reseteen la tarjeta
-  if (leaveTimeout) clearTimeout(leaveTimeout);
-
-  leaveTimeout = setTimeout(async () => {
-    if (fixedTrainerId !== null) {
-      await loadTrainerDataIntoPanel(fixedTrainerId);
-    } else {
-      closeCardModal();
-    }
-  }, 150);
 }
 
 async function loadTrainerDataIntoPanel(id) {
@@ -256,7 +262,7 @@ async function loadTrainerDataIntoPanel(id) {
     if (!res.ok) throw new Error("No se pudo obtener el entrenador.");
 
     const trainerData = await res.json();
-    if (activeLoadingTrainerId !== id) return; // Evita conflictos si el usuario cambia rápido de entrenador
+    if (activeLoadingTrainerId !== id) return;
 
     currentCardTrainer = trainerData;
 
@@ -355,8 +361,7 @@ function renderCardPokemonList() {
   }
 
   container.innerHTML = currentCardTrainer.pokemon.map((p, idx) => `
-    <div draggable="true" ondragstart="handleDragStart(event, ${idx})" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${idx})"
-         class="bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3 cursor-grab">
+    <div class="bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3">
       <span class="text-xs font-bold text-slate-500">${p.position}</span>
       <img src="${getPokemonSpriteUrl(p.id)}" onerror="this.src='${getAuxPokemonSpriteUrl(p.id)}'" class="w-10 h-10 pointer-events-none">
       <div class="min-w-0 flex-1 pointer-events-none">
@@ -367,24 +372,99 @@ function renderCardPokemonList() {
   `).join("");
 }
 
-let draggedIdx = null;
-function handleDragStart(e, idx) { draggedIdx = idx; }
-function handleDragOver(e) { e.preventDefault(); }
+// ==========================================
+// DRAG & DROP EN LA EDICIÓN (INLINE & MODAL)
+// ==========================================
+let inlineDraggedIdx = null;
 
-async function handleDrop(e, targetIdx) {
+function handleInlineDragStart(e, idx) {
+  inlineDraggedIdx = idx;
+}
+
+function handleInlineDragOver(e) {
   e.preventDefault();
-  if (draggedIdx === null || draggedIdx === targetIdx) return;
+}
 
-  const item = currentCardTrainer.pokemon.splice(draggedIdx, 1)[0];
-  currentCardTrainer.pokemon.splice(targetIdx, 0, item);
-  currentCardTrainer.pokemon.forEach((p, i) => p.position = i + 1);
-  renderCardPokemonList();
+function handleInlineDrop(e, targetIdx) {
+  e.preventDefault();
+  if (inlineDraggedIdx === null || inlineDraggedIdx === targetIdx) return;
 
-  await fetch(`/api/usuarios/${currentCardTrainer.id}/pokemon/orden`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pokemon: currentCardTrainer.pokemon.map(p => ({ id: p.id, position: p.position })) })
-  });
+  const slotsData = [];
+  for (let i = 0; i < 8; i++) {
+    slotsData.push({
+      id: document.getElementById(`inline-poke-id-${i}`).value,
+      name: document.getElementById(`inline-poke-input-${i}`).value,
+      imgSrc: document.getElementById(`inline-poke-img-${i}`).src,
+      imgVisible: !document.getElementById(`inline-poke-img-${i}`).classList.contains('opacity-0'),
+      pokedex: document.getElementById(`inline-poke-pokedex-${i}`).innerText
+    });
+  }
+
+  const movedItem = slotsData.splice(inlineDraggedIdx, 1)[0];
+  slotsData.splice(targetIdx, 0, movedItem);
+
+  for (let i = 0; i < 8; i++) {
+    const data = slotsData[i];
+    document.getElementById(`inline-poke-id-${i}`).value = data.id || '';
+    document.getElementById(`inline-poke-input-${i}`).value = data.name || '';
+    const img = document.getElementById(`inline-poke-img-${i}`);
+    if (data.imgVisible && data.id) {
+      img.src = data.imgSrc;
+      img.classList.remove('opacity-0');
+    } else {
+      img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+      img.classList.add('opacity-0');
+    }
+    document.getElementById(`inline-poke-pokedex-${i}`).innerText = data.pokedex || '#---';
+  }
+
+  inlineDraggedIdx = null;
+}
+
+let modalDraggedIdx = null;
+
+function handleModalDragStart(e, idx) {
+  modalDraggedIdx = idx;
+}
+
+function handleModalDragOver(e) {
+  e.preventDefault();
+}
+
+function handleModalDrop(e, targetIdx) {
+  e.preventDefault();
+  if (modalDraggedIdx === null || modalDraggedIdx === targetIdx) return;
+
+  const slotsData = [];
+  for (let i = 0; i < 8; i++) {
+    slotsData.push({
+      id: document.getElementById(`poke-id-${i}`).value,
+      name: document.getElementById(`poke-input-${i}`).value,
+      imgSrc: document.getElementById(`poke-img-${i}`).src,
+      imgVisible: !document.getElementById(`poke-img-${i}`).classList.contains('opacity-0'),
+      pokedex: document.getElementById(`poke-pokedex-${i}`).innerText
+    });
+  }
+
+  const movedItem = slotsData.splice(modalDraggedIdx, 1)[0];
+  slotsData.splice(targetIdx, 0, movedItem);
+
+  for (let i = 0; i < 8; i++) {
+    const data = slotsData[i];
+    document.getElementById(`poke-id-${i}`).value = data.id || '';
+    document.getElementById(`poke-input-${i}`).value = data.name || '';
+    const img = document.getElementById(`poke-img-${i}`);
+    if (data.imgVisible && data.id) {
+      img.src = data.imgSrc;
+      img.classList.remove('opacity-0');
+    } else {
+      img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+      img.classList.add('opacity-0');
+    }
+    document.getElementById(`poke-pokedex-${i}`).innerText = data.pokedex || '#---';
+  }
+
+  modalDraggedIdx = null;
 }
 
 function buildInlinePokemonInputs() {
@@ -393,15 +473,16 @@ function buildInlinePokemonInputs() {
   container.innerHTML = "";
   for (let i = 0; i < 8; i++) {
     container.innerHTML += `
-      <div class="relative bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3">
-        <span class="text-xs font-bold text-slate-500">${i + 1}</span>
+      <div draggable="true" ondragstart="handleInlineDragStart(event, ${i})" ondragover="handleInlineDragOver(event)" ondrop="handleInlineDrop(event, ${i})"
+           class="relative bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3 cursor-grab">
+        <span class="text-xs font-bold text-slate-500 pointer-events-none">${i + 1}</span>
         <img id="inline-poke-img-${i}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="w-10 h-10 opacity-0 pointer-events-none">
         <div class="flex-1 relative min-w-0">
           <input type="text" id="inline-poke-input-${i}" placeholder="Buscar Pokémon..." oninput="searchInlinePokemon(${i})" class="w-full bg-transparent text-sm font-semibold text-white focus:outline-none truncate">
           <input type="hidden" id="inline-poke-id-${i}">
           <div id="inline-poke-results-${i}" class="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto hidden z-20 shadow-xl"></div>
         </div>
-        <div id="inline-poke-pokedex-${i}" class="text-xs text-slate-400 font-mono">#---</div>
+        <div id="inline-poke-pokedex-${i}" class="text-xs text-slate-400 font-mono pointer-events-none">#---</div>
       </div>
     `;
   }
@@ -501,7 +582,7 @@ async function saveInlineTrainer(e) {
   if (res.ok) {
     alert("Entrenador actualizado correctamente");
     await loadTrainers();
-    fixCard(id);
+    selectTrainer(id);
     switchPanelMode('details');
   } else {
     alert((await res.json()).error);
@@ -529,15 +610,16 @@ function openModalForm() {
   container.innerHTML = "";
   for (let i = 0; i < 8; i++) {
     container.innerHTML += `
-      <div class="relative bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3">
-        <span class="text-xs font-bold text-slate-500">${i + 1}</span>
+      <div draggable="true" ondragstart="handleModalDragStart(event, ${i})" ondragover="handleModalDragOver(event)" ondrop="handleModalDrop(event, ${i})"
+           class="relative bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3 cursor-grab">
+        <span class="text-xs font-bold text-slate-500 pointer-events-none">${i + 1}</span>
         <img id="poke-img-${i}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="w-10 h-10 opacity-0 pointer-events-none">
         <div class="flex-1 relative min-w-0">
           <input type="text" id="poke-input-${i}" placeholder="Buscar Pokémon..." oninput="searchModalPokemon(${i})" class="w-full bg-transparent text-sm font-semibold text-white focus:outline-none truncate">
           <input type="hidden" id="poke-id-${i}">
           <div id="poke-results-${i}" class="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto hidden z-20 shadow-xl"></div>
         </div>
-        <div id="poke-pokedex-${i}" class="text-xs text-slate-400 font-mono">#---</div>
+        <div id="poke-pokedex-${i}" class="text-xs text-slate-400 font-mono pointer-events-none">#---</div>
       </div>
     `;
   }
@@ -660,7 +742,6 @@ async function loadCategoryBackgrounds(categoryId) {
     items.forEach((item, index) => {
       const bgObject = { name: item.name || `Fondo ${index + 1}`, src: item.src || "", author: item.author || 'Pokécharms' };
 
-      // Guardar también en caché individual al explorar categorías
       if (bgObject.src && bgObject.name) {
         backgroundNamesCache[bgObject.src] = bgObject.name;
       }
@@ -676,15 +757,7 @@ async function loadCategoryBackgrounds(categoryId) {
         document.querySelectorAll('.bg-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
 
-        backgroundNamesCache[bgObject.src] = bgObject.name;
-
-        if (document.getElementById("inline-form-id").value) {
-          document.getElementById('inline-form-fondo').value = bgObject.src;
-          document.getElementById('inlineCurrentBgLabel').textContent = bgObject.name;
-        } else {
-          document.getElementById('form-fondo').value = bgObject.src;
-          document.getElementById('currentBgLabel').textContent = bgObject.name;
-        }
+        setBackgroundSelection(bgObject.src, bgObject.name);
         closeModalOverlay('bgModalOverlay');
       };
       grid.appendChild(card);
@@ -717,7 +790,6 @@ async function loadTrainersCatalog() {
       const outfitItem = { id: item.id || index, name: outfitName, src: src, author: item.author || 'Game Freak', game: item.game || item.source || 'Pokémon' };
       groupsMap[charId].outfits.push(outfitItem);
 
-      // Precargar en caché global de entrenadores
       trainerOutfitNamesCache[src] = `${charName} (${outfitName})`;
     });
 
@@ -775,15 +847,7 @@ function showOutfitView(character) {
       card.classList.add('selected');
 
       const displayName = `${character.name} (${outfit.name})`;
-      trainerOutfitNamesCache[outfit.src] = displayName;
-
-      if (document.getElementById("inline-form-id").value) {
-        document.getElementById('inline-form-personaje').value = outfit.src;
-        document.getElementById('inlineCurrentTrainerLabel').textContent = displayName;
-      } else {
-        document.getElementById('form-personaje').value = outfit.src;
-        document.getElementById('currentTrainerLabel').textContent = displayName;
-      }
+      setTrainerSelection(outfit.src, displayName);
       closeModalOverlay('trainerModalOverlay');
     };
     grid.appendChild(card);
