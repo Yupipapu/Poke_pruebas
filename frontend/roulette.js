@@ -91,7 +91,7 @@ function drawRoulette(rotationAngle) {
     ctx.fill();
 
     if (loadedAvatars[p.id]) {
-      const avatarSize = 50; // <--- Modifica este valor para cambiar el tamaño del icono con 1 participante
+      const avatarSize = 67; // <--- Modifica este valor para cambiar el tamaño del icono con 1 participante
       const rSize = avatarSize / 2;
       ctx.save();
       ctx.beginPath();
