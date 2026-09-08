@@ -123,18 +123,20 @@ function setTrainerSelection(src, displayName) {
 document.addEventListener("DOMContentLoaded", async () => {
   lucide.createIcons();
 
-  await Promise.all([
-    preloadAllBackgrounds(),
-    loadTrainersCatalog()
-  ]);
-  catalogsLoaded = true;
-
+  // Carga inmediata de datos esenciales sin bloquear con catálogos pesados externos
   await loadMedals();
   await loadTrainers();
   buildInlinePokemonInputs();
   await loadConfig();
 
-  await loadCategoryBackgrounds(1);
+  // Carga diferida en segundo plano para optimizar el rendimiento inicial
+  setTimeout(() => {
+    preloadAllBackgrounds();
+    loadTrainersCatalog().then(() => {
+      catalogsLoaded = true;
+    });
+    loadCategoryBackgrounds(1);
+  }, 300);
 
   document.getElementById('categorySelect').addEventListener('change', (e) => {
     loadCategoryBackgrounds(e.target.value);
@@ -769,6 +771,7 @@ async function loadCategoryBackgrounds(categoryId) {
 
 async function loadTrainersCatalog() {
   const grid = document.getElementById('characterGrid');
+  if (!grid) return;
   grid.innerHTML = '<div style="font-size:12px; color:#888; grid-column: span 6; text-align:center;">Cargando entrenadores...</div>';
 
   try {
@@ -802,6 +805,7 @@ async function loadTrainersCatalog() {
 
 function renderCharacterGrid(characters) {
   const grid = document.getElementById('characterGrid');
+  if (!grid) return;
   grid.innerHTML = '';
   characters.forEach(char => {
     const coverOutfit = char.outfits[0];
@@ -857,10 +861,6 @@ function showOutfitView(character) {
 function showCharacterView() {
   document.getElementById('trainerLevel1View').style.display = 'block';
   document.getElementById('trainerLevel2View').style.display = 'none';
-}
-
-function backupDatabase() {
-  window.location.href = '/api/backup';
 }
 
 function renderMedalsTab() {
