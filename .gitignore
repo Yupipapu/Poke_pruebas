@@ -1,0 +1,3 @@
+git rm --cached database.db
+git commit -m "Remover database.db del control de versiones"
+git push origin main
