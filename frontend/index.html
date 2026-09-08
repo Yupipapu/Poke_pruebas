@@ -65,11 +65,18 @@
     <section id="tab-trainers" class="space-y-4 h-full flex flex-col">
       <div id="trainers-top-bar"
         class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 shrink-0">
-        <div class="relative flex-1 max-w-md">
-          <i data-lucide="search" class="absolute left-3 top-3 text-slate-400 w-5 h-5"></i>
-          <input type="text" id="search-input" oninput="renderTrainers()"
-            placeholder="Buscar por Nombre o Discord ID..."
-            class="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500">
+        <div class="relative flex-1 max-w-md flex gap-2 items-center">
+          <div class="relative flex-1">
+            <i data-lucide="search" class="absolute left-3 top-3 text-slate-400 w-5 h-5"></i>
+            <input type="text" id="search-input" oninput="renderTrainers()"
+              placeholder="Buscar por Nombre o Discord ID..."
+              class="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500">
+          </div>
+          <!-- Input de medallas alineado con la misma altura y centrado vertical -->
+          <div class="w-28 shrink-0">
+            <input type="number" id="medal-filter-input" oninput="renderTrainers()" placeholder="Medallas" min="0"
+              class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500">
+          </div>
         </div>
         <button onclick="openModalForm()"
           class="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg font-medium transition">
@@ -220,7 +227,7 @@
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label class="block text-sm font-medium mb-1">Fondo de Tarjeta:</label>
-                      <button type="button" onclick="openModalOverlay('bgModalOverlay')"
+                      <button type="button" onclick="openBgModal('edit')"
                         class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-left flex justify-between items-center text-sm">
                         <span id="inlineCurrentBgLabel" class="truncate">Seleccionar fondo...</span>
                         <span>▾</span>
@@ -228,7 +235,7 @@
                     </div>
                     <div>
                       <label class="block text-sm font-medium mb-1">Entrenador (Personaje):</label>
-                      <button type="button" onclick="openModalOverlay('trainerModalOverlay')"
+                      <button type="button" onclick="openTrainerModal('edit')"
                         class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-left flex justify-between items-center text-sm">
                         <span id="inlineCurrentTrainerLabel" class="truncate">Seleccionar personaje...</span>
                         <span>▾</span>
@@ -404,7 +411,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium mb-1">Fondo de Tarjeta:</label>
-            <button type="button" onclick="openModalOverlay('bgModalOverlay')"
+            <button type="button" onclick="openBgModal('create')"
               class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-left flex justify-between items-center text-sm">
               <span id="currentBgLabel" class="truncate">Seleccionar fondo...</span>
               <span>▾</span>
@@ -412,7 +419,7 @@
           </div>
           <div>
             <label class="block text-sm font-medium mb-1">Entrenador (Personaje):</label>
-            <button type="button" onclick="openModalOverlay('trainerModalOverlay')"
+            <button type="button" onclick="openTrainerModal('create')"
               class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-left flex justify-between items-center text-sm">
               <span id="currentTrainerLabel" class="truncate">Seleccionar personaje...</span>
               <span>▾</span>
@@ -454,18 +461,18 @@
           <label class="text-xs mb-1 block">Categories</label>
           <select id="categorySelect"
             class="w-full p-2 bg-slate-900 border border-slate-700 rounded text-white text-xs">
-            <option value="1">Colección 1</option>
-            <option value="2">Colección 2</option>
-            <option value="3">Colección 3</option>
-            <option value="4">Colección 4</option>
-            <option value="5">Colección 5</option>
-            <option value="6">Colección 6</option>
-            <option value="7">Colección 7</option>
-            <option value="8">Colección 8</option>
-            <option value="9">Colección 9</option>
-            <option value="10">Colección 10</option>
-            <option value="11">Colección 11</option>
-            <option value="12">Colección 12</option>
+            <option value="1">Pokémon Legends Arceus (9)</option>
+            <option value="2">Pokémon Masters (93)</option>
+            <option value="3">Pokémon Scarlet & Violet (14)</option>
+            <option value="4">Pokémon World Championships 2022 (3)</option>
+            <option value="5">Pokémon Generation 1 (5)</option>
+            <option value="6">Pokécharms Day (20th Anniversary) (6)</option>
+            <option value="7">Pokémon Anime (22)</option>
+            <option value="8">Pride Flags (11)</option>
+            <option value="9">Pokémon Sleep (4)</option>
+            <option value="10">Pokémon 30th Anniversary (4)</option>
+            <option value="11">Pokémon Firered & Leafgreen (6)</option>
+            <option value="12">Pokémon Wind & Waves (4)</option>
           </select>
         </div>
         <div>
