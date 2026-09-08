@@ -1,29 +1,108 @@
+// ==========================================
+// CONFIGURACIÓN GLOBAL DE SPRITES POKÉMON
+// ==========================================
+const POKE_SPRITE_BASE = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/";
+const POKE_SPRITE_AUX = "https://raw.githubusercontent.com/PokeAPI/sprites/refs/heads/master/sprites/pokemon/versions/generation-ix/scarlet-violet/";
+
+function getPokemonSpriteUrl(id) {
+  return `${POKE_SPRITE_BASE}${id}.png`;
+}
+
+function getAuxPokemonSpriteUrl(id) {
+  return `${POKE_SPRITE_AUX}${id}.png`;
+}
+
+function setPokemonImageWithFallback(imgElement, id) {
+  imgElement.src = getPokemonSpriteUrl(id);
+  imgElement.onerror = () => {
+    imgElement.src = getAuxPokemonSpriteUrl(id);
+    imgElement.onerror = null;
+  };
+}
+
+// ==========================================
+// CACHÉS Y ESTADO GLOBAL
+// ==========================================
+const backgroundNamesCache = {};
+const trainerOutfitNamesCache = {};
+
 let trainersList = [];
 let availableMedals = [];
 let pokemonCache = [];
 let currentCardTrainer = null;
 
-let fixedTrainerId = null;     
-let currentPanelMode = 'details'; 
+let fixedTrainerId = null;
+let currentPanelMode = 'details';
 
 let groupedCharacters = [];
+let activeLoadingTrainerId = null;
+let catalogsLoaded = false; // Bandera para saber si los catálogos ya terminaron de descargar
 const URL_TRAINER_JSON = "https://tcm-assets.pokecharms.com/export/modern-trainers/1.json";
 
 function formatName(name) {
   return name.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join("-");
 }
 
+function getBackgroundName(url) {
+  if (!url) return "Seleccionar fondo...";
+  if (backgroundNamesCache[url]) return backgroundNamesCache[url];
+
+  // Si es un hash de archivo técnico de Pokécharms y no se encontró en caché:
+  if (url.includes('pokecharms.com') || url.length > 40) {
+    return "Fondo personalizado / Externo";
+  }
+
+  try {
+    const filename = url.split('/').pop().split('?')[0];
+    return filename ? decodeURIComponent(filename) : "Seleccionar fondo...";
+  } catch (e) {
+    return "Seleccionar fondo...";
+  }
+}
+
+function getTrainerOutfitName(url) {
+  if (!url) return "Seleccionar personaje...";
+  if (trainerOutfitNamesCache[url]) return trainerOutfitNamesCache[url];
+
+  for (const char of groupedCharacters) {
+    const outfit = char.outfits.find(o => o.src === url);
+    if (outfit) {
+      const displayName = `${char.name} (${outfit.name})`;
+      trainerOutfitNamesCache[url] = displayName;
+      return displayName;
+    }
+  }
+
+  // Si es un sprite externo o no encontrado en el catálogo de la API 1.json:
+  if (url.includes('pokecharms.com') || url.length > 40) {
+    return "Entrenador personalizado / Otro catálogo";
+  }
+
+  try {
+    const filename = url.split('/').pop().split('?')[0];
+    return filename ? decodeURIComponent(filename) : "Seleccionar personaje...";
+  } catch (e) {
+    return "Seleccionar personajeப்பொரு..."
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   lucide.createIcons();
+
+  // 1. Cargamos primero los catálogos globales y los fondos para evitar nombres técnicos vacíos
+  await Promise.all([
+    preloadAllBackgrounds(),
+    loadTrainersCatalog()
+  ]);
+  catalogsLoaded = true;
+
+  // 2. Cargamos datos de la base de datos y medallas
   await loadMedals();
   await loadTrainers();
   buildInlinePokemonInputs();
   await loadConfig();
-  
-  await Promise.all([
-    loadCategoryBackgrounds(1),
-    loadTrainersCatalog()
-  ]);
+
+  await loadCategoryBackgrounds(1);
 
   document.getElementById('categorySelect').addEventListener('change', (e) => {
     loadCategoryBackgrounds(e.target.value);
@@ -35,6 +114,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderCharacterGrid(filtered);
   });
 });
+
+async function preloadAllBackgrounds() {
+  for (let i = 1; i <= 12; i++) {
+    try {
+      const res = await fetch(`https://tcm-assets.pokecharms.com/export/modern-backgrounds/${i}.json`);
+      const data = await res.json();
+      const items = Array.isArray(data) ? data : Object.values(data);
+      items.forEach(item => {
+        if (item.src && item.name) {
+          backgroundNamesCache[item.src] = item.name;
+        }
+      });
+    } catch (e) { }
+  }
+}
 
 function toggleMobileMenu() {
   const sidebar = document.getElementById('sidebar');
@@ -80,9 +174,9 @@ async function loadMedals() {
 
 async function loadTrainers() {
   try {
-    const res = await fetch("/api/usuarios");
+    const res = await fetch(`/api/usuarios?t=${Date.now()}`);
     trainersList = await res.json();
-    if (activeTrainerIds.size === 0) {
+    if (typeof activeTrainerIds !== 'undefined' && activeTrainerIds.size === 0) {
       trainersList.forEach(t => activeTrainerIds.add(t.id));
     }
     renderTrainers();
@@ -94,7 +188,7 @@ function renderTrainers() {
   const searchInput = document.getElementById("search-input");
   const query = searchInput ? searchInput.value.toLowerCase() : "";
 
-  const filtered = trainersList.filter(t => 
+  const filtered = trainersList.filter(t =>
     t.name.toLowerCase().includes(query) || String(t.discord_id).includes(query)
   );
 
@@ -121,23 +215,50 @@ async function previewCard(id) {
 async function fixCard(id) {
   fixedTrainerId = id;
   await loadTrainerDataIntoPanel(id);
-  renderTrainers(); 
+  renderTrainers();
 }
 
-async function onListMouseLeave() {
-  if (fixedTrainerId !== null) {
-    await loadTrainerDataIntoPanel(fixedTrainerId);
-  } else {
-    closeCardModal();
+let leaveTimeout = null;
+
+function onListMouseEnter() {
+  // Si el mouse vuelve a entrar rápidamente, cancelamos cualquier intento de cierre pendiente
+  if (leaveTimeout) {
+    clearTimeout(leaveTimeout);
+    leaveTimeout = null;
   }
 }
 
+async function onListMouseLeave(event) {
+  // Si el cursor se mueve directamente hacia el panel de detalles, no revertimos la vista
+  if (event && event.relatedTarget) {
+    const detailContainer = document.getElementById("trainers-detail-container");
+    if (detailContainer && detailContainer.contains(event.relatedTarget)) {
+      return;
+    }
+  }
+
+  // Margen de tiempo (150ms) para evitar que saltos rápidos de cursor en los bordes reseteen la tarjeta
+  if (leaveTimeout) clearTimeout(leaveTimeout);
+
+  leaveTimeout = setTimeout(async () => {
+    if (fixedTrainerId !== null) {
+      await loadTrainerDataIntoPanel(fixedTrainerId);
+    } else {
+      closeCardModal();
+    }
+  }, 150);
+}
+
 async function loadTrainerDataIntoPanel(id) {
+  activeLoadingTrainerId = id;
   try {
     const res = await fetch(`/api/usuarios/${id}`);
     if (!res.ok) throw new Error("No se pudo obtener el entrenador.");
-    
-    currentCardTrainer = await res.json();
+
+    const trainerData = await res.json();
+    if (activeLoadingTrainerId !== id) return; // Evita conflictos si el usuario cambia rápido de entrenador
+
+    currentCardTrainer = trainerData;
 
     document.getElementById("card-avatar").src = currentCardTrainer.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png';
     document.getElementById("card-name").innerText = currentCardTrainer.name;
@@ -200,14 +321,14 @@ function applyPanelMode() {
   } else if (currentPanelMode === 'card') {
     cardContent.classList.remove("hidden");
     tabCard.className = "book-tab active-tab px-4 py-2 rounded-t-lg text-xs font-bold bg-slate-800 text-indigo-400 border-t border-x border-slate-700 transition";
-    if (currentCardTrainer) renderTrainerCardCanvas();
+    if (currentCardTrainer && typeof renderTrainerCardCanvas === 'function') renderTrainerCardCanvas();
   } else if (currentPanelMode === 'edit') {
     editContent.classList.remove("hidden");
     tabEdit.className = "book-tab active-tab px-4 py-2 rounded-t-lg text-xs font-bold bg-slate-800 text-indigo-400 border-t border-x border-slate-700 transition";
   }
 }
 
-function closeCardModal() { 
+function closeCardModal() {
   fixedTrainerId = null;
   currentCardTrainer = null;
   document.getElementById("panel-tabs-bar").classList.add("hidden");
@@ -237,7 +358,7 @@ function renderCardPokemonList() {
     <div draggable="true" ondragstart="handleDragStart(event, ${idx})" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${idx})"
          class="bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex items-center gap-3 cursor-grab">
       <span class="text-xs font-bold text-slate-500">${p.position}</span>
-      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" class="w-10 h-10 pointer-events-none">
+      <img src="${getPokemonSpriteUrl(p.id)}" onerror="this.src='${getAuxPokemonSpriteUrl(p.id)}'" class="w-10 h-10 pointer-events-none">
       <div class="min-w-0 flex-1 pointer-events-none">
         <div class="text-sm font-semibold truncate text-white">${formatName(p.name)}</div>
         <div class="text-xs text-slate-400 font-mono">#${String(p.id).padStart(3, '0')}</div>
@@ -303,7 +424,7 @@ async function searchInlinePokemon(slotIdx) {
   const matches = pokemonCache.filter(p => p.name.toLowerCase().includes(query)).slice(0, 15);
   resultsDiv.innerHTML = matches.map(p => `
     <div onclick="selectInlinePokemon(${slotIdx}, ${p.id}, '${p.name}')" class="p-2 hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs">
-      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" class="w-6 h-6">
+      <img src="${getPokemonSpriteUrl(p.id)}" onerror="this.src='${getAuxPokemonSpriteUrl(p.id)}'" class="w-6 h-6">
       <span class="font-medium text-white">${p.name}</span>
     </div>
   `).join("");
@@ -313,9 +434,9 @@ async function searchInlinePokemon(slotIdx) {
 function selectInlinePokemon(slotIdx, id, name) {
   document.getElementById(`inline-poke-id-${slotIdx}`).value = id;
   document.getElementById(`inline-poke-input-${slotIdx}`).value = name;
-  
+
   const img = document.getElementById(`inline-poke-img-${slotIdx}`);
-  img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+  setPokemonImageWithFallback(img, id);
   img.classList.remove("opacity-0");
 
   const pokedexDiv = document.getElementById(`inline-poke-pokedex-${slotIdx}`);
@@ -329,12 +450,12 @@ function populateInlineEditForm(trainer) {
   document.getElementById("inline-form-name").value = trainer.name;
   document.getElementById("inline-form-discord").value = trainer.discord_id;
   document.getElementById("inline-form-participations").value = trainer.participations;
-  
+
   document.getElementById("inline-form-fondo").value = trainer.fondo_url || '';
-  document.getElementById("inlineCurrentBgLabel").textContent = trainer.fondo_url ? "Fondo seleccionado" : "Seleccionar fondo...";
+  document.getElementById("inlineCurrentBgLabel").textContent = getBackgroundName(trainer.fondo_url);
 
   document.getElementById("inline-form-personaje").value = trainer.personaje_url || '';
-  document.getElementById("inlineCurrentTrainerLabel").textContent = trainer.personaje_url ? "Personaje seleccionado" : "Seleccionar personaje...";
+  document.getElementById("inlineCurrentTrainerLabel").textContent = getTrainerOutfitName(trainer.personaje_url);
 
   const medalsContainer = document.getElementById("inline-form-medals");
   const trainerMedalIds = trainer.medals ? trainer.medals.map(m => m.id) : [];
@@ -377,13 +498,13 @@ async function saveInlineTrainer(e) {
     body: JSON.stringify(payload)
   });
 
-  if (res.ok) { 
+  if (res.ok) {
     alert("Entrenador actualizado correctamente");
     await loadTrainers();
     fixCard(id);
     switchPanelMode('details');
-  } else { 
-    alert((await res.json()).error); 
+  } else {
+    alert((await res.json()).error);
   }
 }
 
@@ -443,7 +564,7 @@ async function searchModalPokemon(slotIdx) {
   const matches = pokemonCache.filter(p => p.name.toLowerCase().includes(query)).slice(0, 15);
   resultsDiv.innerHTML = matches.map(p => `
     <div onclick="selectModalPokemon(${slotIdx}, ${p.id}, '${p.name}')" class="p-2 hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs">
-      <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png" class="w-6 h-6">
+      <img src="${getPokemonSpriteUrl(p.id)}" onerror="this.src='${getAuxPokemonSpriteUrl(p.id)}'" class="w-6 h-6">
       <span class="font-medium text-white">${p.name}</span>
     </div>
   `).join("");
@@ -453,9 +574,9 @@ async function searchModalPokemon(slotIdx) {
 function selectModalPokemon(slotIdx, id, name) {
   document.getElementById(`poke-id-${slotIdx}`).value = id;
   document.getElementById(`poke-input-${slotIdx}`).value = name;
-  
+
   const img = document.getElementById(`poke-img-${slotIdx}`);
-  img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+  setPokemonImageWithFallback(img, id);
   img.classList.remove("opacity-0");
 
   const pokedexDiv = document.getElementById(`poke-pokedex-${slotIdx}`);
@@ -485,11 +606,11 @@ async function saveNewTrainer(e) {
     body: JSON.stringify(payload)
   });
 
-  if (res.ok) { 
-    closeFormModal(); 
-    await loadTrainers(); 
-  } else { 
-    alert((await res.json()).error); 
+  if (res.ok) {
+    closeFormModal();
+    await loadTrainers();
+  } else {
+    alert((await res.json()).error);
   }
 }
 
@@ -538,6 +659,12 @@ async function loadCategoryBackgrounds(categoryId) {
 
     items.forEach((item, index) => {
       const bgObject = { name: item.name || `Fondo ${index + 1}`, src: item.src || "", author: item.author || 'Pokécharms' };
+
+      // Guardar también en caché individual al explorar categorías
+      if (bgObject.src && bgObject.name) {
+        backgroundNamesCache[bgObject.src] = bgObject.name;
+      }
+
       const card = document.createElement('div');
       card.className = 'item-card bg-card';
       card.innerHTML = `
@@ -548,7 +675,9 @@ async function loadCategoryBackgrounds(categoryId) {
       card.onclick = () => {
         document.querySelectorAll('.bg-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
-        
+
+        backgroundNamesCache[bgObject.src] = bgObject.name;
+
         if (document.getElementById("inline-form-id").value) {
           document.getElementById('inline-form-fondo').value = bgObject.src;
           document.getElementById('inlineCurrentBgLabel').textContent = bgObject.name;
@@ -585,7 +714,11 @@ async function loadTrainersCatalog() {
       if (!groupsMap[charId]) {
         groupsMap[charId] = { id: charId, name: charName, role: item.role || 'PROTAGONISTS', outfits: [] };
       }
-      groupsMap[charId].outfits.push({ id: item.id || index, name: outfitName, src: src, author: item.author || 'Game Freak', game: item.game || item.source || 'Pokémon' });
+      const outfitItem = { id: item.id || index, name: outfitName, src: src, author: item.author || 'Game Freak', game: item.game || item.source || 'Pokémon' };
+      groupsMap[charId].outfits.push(outfitItem);
+
+      // Precargar en caché global de entrenadores
+      trainerOutfitNamesCache[src] = `${charName} (${outfitName})`;
     });
 
     groupedCharacters = Object.values(groupsMap);
@@ -641,12 +774,15 @@ function showOutfitView(character) {
       document.querySelectorAll('.outfit-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
 
+      const displayName = `${character.name} (${outfit.name})`;
+      trainerOutfitNamesCache[outfit.src] = displayName;
+
       if (document.getElementById("inline-form-id").value) {
         document.getElementById('inline-form-personaje').value = outfit.src;
-        document.getElementById('inlineCurrentTrainerLabel').textContent = outfit.name;
+        document.getElementById('inlineCurrentTrainerLabel').textContent = displayName;
       } else {
         document.getElementById('form-personaje').value = outfit.src;
-        document.getElementById('currentTrainerLabel').textContent = outfit.name;
+        document.getElementById('currentTrainerLabel').textContent = displayName;
       }
       closeModalOverlay('trainerModalOverlay');
     };
@@ -671,7 +807,7 @@ function renderMedalsTab() {
   availableMedals.forEach(m => {
     const card = document.createElement("div");
     card.className = "bg-slate-800 border border-slate-700 p-4 rounded-xl space-y-3 flex flex-col justify-between";
-    
+
     let usersHtml = '<span class="text-xs text-slate-500">Nadie tiene esta medalla aún</span>';
     if (m.users && m.users.length > 0) {
       usersHtml = `
