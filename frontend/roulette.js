@@ -133,7 +133,7 @@ function drawRoulette(rotationAngle) {
       const ax = cx + Math.cos(mid) * (radius * 0.65);
       const ay = cy + Math.sin(mid) * (radius * 0.65);
       
-      const avatarSize = 36; 
+      const avatarSize = 67; 
       const rSize = avatarSize / 2;
 
       ctx.save();
