@@ -3,6 +3,9 @@ let lastWinnerId = null;
 let probabilities = [];
 let loadedAvatars = {};
 
+const tickSound = new Audio('https://cdnjs.cloudflare.com/ajax/libs/blockly/1.0.0/media/disconnect.mp3');
+const bellSound = new Audio('https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.7/sounds/bell_ring.mp3');
+
 function renderRouletteCheckboxes() {
   const query = document.getElementById("roulette-search").value.toLowerCase();
   const list = document.getElementById("roulette-checklist");
@@ -91,7 +94,7 @@ function drawRoulette(rotationAngle) {
     ctx.fill();
 
     if (loadedAvatars[p.id]) {
-      const avatarSize = 67; // <--- Modifica este valor para cambiar el tamaño del icono con 1 participante
+      const avatarSize = 50; 
       const rSize = avatarSize / 2;
       ctx.save();
       ctx.beginPath();
@@ -129,7 +132,7 @@ function drawRoulette(rotationAngle) {
       const ax = cx + Math.cos(mid) * (radius * 0.65);
       const ay = cy + Math.sin(mid) * (radius * 0.65);
       
-      const avatarSize = 67; // <--- Modifica este valor para cambiar el tamaño del icono con varios participantes
+      const avatarSize = 36; 
       const rSize = avatarSize / 2;
 
       ctx.save();
@@ -150,6 +153,23 @@ function drawRoulette(rotationAngle) {
   ctx.fill();
 }
 
+function getActiveItemIndex(rotationAngle) {
+  const normRot = ((rotationAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const targetA = (2 * Math.PI - normRot) % (2 * Math.PI);
+  
+  let currentAngleAcc = 0;
+  for (let i = 0; i < probabilities.length; i++) {
+    const sliceAngle = probabilities[i].probability * 2 * Math.PI;
+    const start = currentAngleAcc;
+    const end = currentAngleAcc + sliceAngle;
+    if (targetA >= start && targetA < end) {
+      return i;
+    }
+    currentAngleAcc = end;
+  }
+  return 0;
+}
+
 function spinRoulette() {
   if (probabilities.length === 0) return;
   const btn = document.getElementById("btn-spin");
@@ -168,14 +188,32 @@ function spinRoulette() {
       const targetMid = cumulativeAngle + (p.probability * 2 * Math.PI) / 2;
       const totalRotation = 10 * Math.PI * 2 + (2 * Math.PI - targetMid);
       let start = null;
+      let lastHoverIndex = -1;
 
       function animate(time) {
         if (!start) start = time;
         const progress = Math.min((time - start) / 4000, 1);
         const easeOut = 1 - Math.pow(1 - progress, 3);
-        drawRoulette((easeOut * totalRotation) % (Math.PI * 2));
-        if (progress < 1) requestAnimationFrame(animate);
-        else { btn.disabled = false; showWinner(winner); }
+        const currentAngle = (easeOut * totalRotation) % (2 * Math.PI);
+
+        // Detectar si el puntero pasa por un nuevo elemento para reproducir el tick
+        const currentIndex = getActiveItemIndex(currentAngle);
+        if (lastHoverIndex !== -1 && lastHoverIndex !== currentIndex) {
+          tickSound.currentTime = 0;
+          tickSound.play().catch(() => {});
+        }
+        lastHoverIndex = currentIndex;
+
+        drawRoulette(currentAngle);
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          btn.disabled = false;
+          bellSound.currentTime = 0;
+          bellSound.play().catch(() => {});
+          showWinner(winner);
+        }
       }
       requestAnimationFrame(animate);
       break;
