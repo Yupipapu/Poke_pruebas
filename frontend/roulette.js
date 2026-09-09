@@ -2,16 +2,11 @@ let activeTrainerIds = new Set();
 let lastWinnerId = null;
 let probabilities = [];
 let loadedAvatars = {};
+let currentRouletteAngle = 0; // Almacena el ángulo actual donde se detuvo la ruleta
 
 const tickSound = new Audio('https://cdnjs.cloudflare.com/ajax/libs/blockly/1.0.0/media/disconnect.mp3');
 const bellSound = new Audio('https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.7/sounds/bell_ring.mp3');
 
-// Función de easing para una aceleración y desaceleración suave
-function easeInOutCubic(x) {
-  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
-}
-
-// Resto de tus funciones anteriores (renderRouletteCheckboxes, toggleTrainerRoulette, etc.) se mantienen igual...
 function renderRouletteCheckboxes() {
   const query = document.getElementById("roulette-search").value.toLowerCase();
   const list = document.getElementById("roulette-checklist");
@@ -66,18 +61,18 @@ function updateProbabilities() {
 
 function preloadAvatarsAndDraw() {
   let loaded = 0;
-  if (probabilities.length === 0) return drawRoulette(0);
+  if (probabilities.length === 0) return drawRoulette(currentRouletteAngle);
 
   probabilities.forEach(p => {
     if (!loadedAvatars[p.id]) {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.src = p.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png';
-      img.onload = img.onerror = () => { loaded++; if (loaded === probabilities.length) drawRoulette(0); };
+      img.onload = img.onerror = () => { loaded++; if (loaded === probabilities.length) drawRoulette(currentRouletteAngle); };
       loadedAvatars[p.id] = img;
     } else { loaded++; }
   });
-  if (loaded === probabilities.length) drawRoulette(0);
+  if (loaded === probabilities.length) drawRoulette(currentRouletteAngle);
 }
 
 function drawRoulette(rotationAngle) {
@@ -91,6 +86,7 @@ function drawRoulette(rotationAngle) {
 
   const colors = ['#6366f1', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#06b6d4'];
 
+  // Caso: Un solo participante (dibuja círculo completo sin líneas divisorias)
   if (probabilities.length === 1) {
     const p = probabilities[0];
     ctx.beginPath();
@@ -99,7 +95,7 @@ function drawRoulette(rotationAngle) {
     ctx.fill();
 
     if (loadedAvatars[p.id]) {
-      const avatarSize = 50; 
+      const avatarSize = 67; 
       const rSize = avatarSize / 2;
       ctx.save();
       ctx.beginPath();
@@ -108,7 +104,8 @@ function drawRoulette(rotationAngle) {
       ctx.drawImage(loadedAvatars[p.id], cx - rSize, cy - rSize, avatarSize, avatarSize);
       ctx.restore();
     }
-    
+
+    // Dibujar indicador lateral
     ctx.fillStyle = "#ef4444";
     ctx.beginPath();
     ctx.moveTo(cx + radius - 30, cy);
@@ -118,6 +115,7 @@ function drawRoulette(rotationAngle) {
     return;
   }
 
+  // Caso: Múltiples participantes
   let startAngle = rotationAngle;
   probabilities.forEach((p, idx) => {
     const sliceAngle = p.probability * 2 * Math.PI;
@@ -188,28 +186,45 @@ function spinRoulette() {
   let cumulativeAngle = 0;
   for (const p of probabilities) {
     if (p.id === winner.id) {
-      // Cálculo aleatorio dentro del segmento para que no caiga siempre al centro
       const sliceAngle = p.probability * 2 * Math.PI;
-      const targetOffset = Math.random() * (sliceAngle * 0.8) + (sliceAngle * 0.1); 
-      const targetAngle = cumulativeAngle + targetOffset;
       
-      const totalRotation = 10 * Math.PI * 2 + (2 * Math.PI - targetAngle);
+      // Margen aleatorio dentro de la casilla del ganador
+      const margin = sliceAngle * 0.15;
+      const minAngle = cumulativeAngle + margin;
+      const maxAngle = cumulativeAngle + sliceAngle - margin;
+      const randomTargetAngle = minAngle + Math.random() * (maxAngle - minAngle);
+
+      // Cálculo de rotación exacta desde el ángulo actual
+      const targetRelativeAngle = (2 * Math.PI - (randomTargetAngle % (2 * Math.PI))) % (2 * Math.PI);
+      const currentRelativeAngle = (currentRouletteAngle % (2 * Math.PI));
+      let angleDiff = targetRelativeAngle - currentRelativeAngle;
+      if (angleDiff <= 0) angleDiff += 2 * Math.PI;
+
+      const fullTurns = 10;
+      const totalRotation = (fullTurns * 2 * Math.PI) + angleDiff;
+      
       let start = null;
       let lastHoverIndex = -1;
+      const duration = 10000; // Duración exacta de 10 segundos
 
       function animate(time) {
         if (!start) start = time;
-        const progress = Math.min((time - start) / 5000, 1); // 5 segundos de duración
-        
-        // Aplicar curva de aceleración/deceleración suave
-        const easedProgress = easeInOutCubic(progress);
-        const currentAngle = (easedProgress * totalRotation) % (2 * Math.PI);
+        const elapsed = time - start;
+        const progress = Math.min(elapsed / duration, 1);
 
-        // Sonido de "Tick" (sólo si no se está reproduciendo ya)
+        // Perfil de velocidad triangular: Aceleración constante primera mitad, Desaceleración constante segunda mitad
+        const s = progress <= 0.5 
+          ? 2 * progress * progress 
+          : 1 - 2 * Math.pow(1 - progress, 2);
+
+        const currentAngle = currentRouletteAngle + s * totalRotation;
+
+        // Detectar cruce de elemento para reproducir el tic sin solapamientos
         const currentIndex = getActiveItemIndex(currentAngle);
         if (lastHoverIndex !== -1 && lastHoverIndex !== currentIndex) {
-          if (tickSound.paused) { // Solo reproduce si el anterior ha terminado
-            tickSound.play();
+          if (tickSound.paused) {
+            tickSound.currentTime = 0;
+            tickSound.play().catch(() => {});
           }
         }
         lastHoverIndex = currentIndex;
@@ -220,8 +235,9 @@ function spinRoulette() {
           requestAnimationFrame(animate);
         } else {
           btn.disabled = false;
+          currentRouletteAngle = currentAngle % (2 * Math.PI); // Guardar posición final exacta
           bellSound.currentTime = 0;
-          bellSound.play();
+          bellSound.play().catch(() => {});
           showWinner(winner);
         }
       }
